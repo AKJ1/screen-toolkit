@@ -11,9 +11,11 @@ Item {
     property string region: ""
     property string mp4Path: ""
     property string gifPath: ""
-    property bool isRecording: false
-    property bool isConverting: false
-    property bool isDone: false
+    // recordState: "" | "recording" | "converting" | "done"
+    property string recordState: ""
+    readonly property bool isRecording:  recordState === "recording"
+    readonly property bool isConverting: recordState === "converting"
+    readonly property bool isDone:       recordState === "done"
     property int regionX: 0
     property int regionY: 0
     property int regionW: 400
@@ -22,7 +24,6 @@ Item {
     property int uiY: 0
     property var _primaryScreen: null
     property int _elapsed: 0
-    property int _frameToken: 0
     property string format: "gif"
     property bool audioOutput: false
     property bool audioInput: false
@@ -76,24 +77,14 @@ Item {
         root.uiX = uiOffsetX || 0
         root.uiY = uiOffsetY || 0
         root._primaryScreen = screen ?? Quickshell.screens[0] ?? null
-        var pw = Math.min(root.regionW, 300)
-        var ph = Math.round(pw * root.regionH / Math.max(root.regionW, 1))
-        root._maskW = pw + Style.marginL * 2 + 2
-        root._maskH = ph + Style.marginM * 3 + 34 + 2
-        root._recorderBin = (pluginApi?.pluginSettings?.detectedRecorder === "wf-recorder")
+        root._recorderBin = (pluginApi?.mainInstance?.detectedRecorder === "wf-recorder")
                             ? "wf-recorder" : "wl-screenrec"
         root.region       = regionStr
         root.mp4Path      = "/tmp/screen-toolkit-record-" + Date.now() + ".mp4"
         root.gifPath      = ""
-        root.isRecording  = true
-        root.isConverting = false
-        root.isDone       = false
-        root._elapsed     = 0
-        root._frameToken  = 0
-        root._previewBusy = false
+        root.recordState = "recording"
+        root._elapsed = 0
         elapsedTimer.start()
-        previewTimer.start()
-        _capturePreview()
         var cmd
         if (root._recorderBin === "wf-recorder") {
             cmd = "wf-recorder -g " + shellEscape(regionStr) +
@@ -120,19 +111,16 @@ Item {
     function stopRecording() {
         if (!root.isRecording) return
         elapsedTimer.stop()
-        previewTimer.stop()
         stopProc.exec({ command: ["bash", "-c", "pkill -INT " + root._recorderBin + " 2>/dev/null || true"] })
     }
     function dismiss() {
         if (root.isRecording) root.stopRecording()
         if (root.gifPath !== "")
             stopProc.exec({ command: ["bash", "-c", "rm -f " + shellEscape(root.gifPath)] })
-        root.isRecording    = false
-        root.isConverting   = false
-        root.isDone         = false
+        root.recordState = ""
         root.gifPath        = ""
-        root._previewBusy   = false
         root._primaryScreen = null
+        root.dismissed()
     }
     function shellEscape(str) {
         return "'" + str.replace(/'/g, "'\\''") + "'"
@@ -161,12 +149,9 @@ Item {
     Process {
         id: wfRecorderProc
         onExited: (code) => {
-            root.isRecording  = false
-            root._previewBusy = false
-            previewTimer.stop()
             elapsedTimer.stop()
             if (code === 0 || code === 130 || code === 2) {
-                root.isConverting = true
+                root.recordState = "converting"
                 var tmpTs    = Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss")
                 var optimOut = "/tmp/screen-toolkit-record-" + tmpTs
                 if (root.format === "mp4") {
@@ -181,7 +166,7 @@ Item {
                         " " + shellEscape(root.gifPath) + " 2>/dev/null && " +
                         "rm -f " + shellEscape(root.mp4Path) + " && " +
                         "ffmpeg -y -ss 0 -i " + shellEscape(root.gifPath) +
-                        " -frames:v 1 /tmp/screen-toolkit-record-preview.png 2>/dev/null; exit 0"
+                        " -frames:v 1 /tmp/screen-toolkit-record-thumb.png 2>/dev/null; exit 0"
                     ]})
                 } else {
                     root.gifPath = optimOut + ".gif"
@@ -207,10 +192,8 @@ Item {
     Process {
         id: gifConvertProc
         onExited: (code) => {
-            root.isConverting = false
             if (code === 0) {
-                root._frameToken++
-                root.isDone = true
+                _handleDone()
             } else {
                 root.dismiss()
                 ToastService.showError(root.format === "mp4"
@@ -223,12 +206,18 @@ Item {
         id: saveProc
         property string savedPath: ""
         onExited: (code) => {
-            if (code === 0)
-                ToastService.showNotice(root.pluginApi?.tr("record.saved"), saveProc.savedPath, "device-floppy")
-            else
+            if (code === 0) {
+                var toClipboard = root.pluginApi?.pluginSettings?.recordCopyToClipboard ?? false
+                if (toClipboard) _copyPathToClipboard(saveProc.savedPath)
+                var msg = toClipboard
+                    ? root.pluginApi?.tr("record.savedAndCopied")
+                    : root.pluginApi?.tr("record.saved")
+                ToastService.showNotice(msg, saveProc.savedPath, "device-floppy")
+            } else {
                 ToastService.showError(root.format === "mp4"
                     ? root.pluginApi?.tr("record.saveMp4Failed")
                     : root.pluginApi?.tr("record.saveGifFailed"))
+            }
             root.dismiss()
         }
     }
@@ -249,12 +238,13 @@ Item {
     Variants {
         model: Quickshell.screens
         delegate: PanelWindow {
+            id: recWin
             required property ShellScreen modelData
-            screen: modelData
             readonly property bool isPrimary: modelData === root._primaryScreen
+            screen: modelData
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
-            visible: root.isRecording || root.isConverting || root.isDone
+            visible: root.isRecording
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
@@ -271,17 +261,17 @@ Item {
             }
             mask: Region { item: isPrimary ? maskItem : null }
             Rectangle {
-                visible: isPrimary && root.isRecording
+                visible: isPrimary
                 x: root.uiX - 4; y: root.uiY - 4
                 width: root.regionW + 8; height: root.regionH + 8
                 color: "transparent"
                 border.color: "#FF4444"; border.width: Style.capsuleBorderWidth || 2; radius: Style.radiusS; opacity: 0.85
             }
             Item {
-                id: cardAnchor
+                id: stopBtnAnchor
                 visible: isPrimary
-                readonly property real cardW: cardRect.implicitWidth  + 2
-                readonly property real cardH: cardRect.implicitHeight + 2
+                readonly property real btnW: 110
+                readonly property real btnH: 36
                 readonly property real spaceBelow: parent.height - (root.uiY + root.regionH)
                 x: Math.max(8, Math.min(root.uiX + (root.regionW - cardW) / 2, parent.width - cardW - 8))
                 y: spaceBelow >= cardH + 10 ? root.uiY + root.regionH + 8 : root.uiY - cardH - 8
@@ -464,8 +454,16 @@ Item {
                             }
                         }
                     }
+                    MouseArea {
+                        id: stopMA; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.stopRecording()
+                    }
                 }
             }
+
+            Item { id: maskItem; x: stopBtnAnchor.x; y: stopBtnAnchor.y; width: stopBtnAnchor.btnW; height: stopBtnAnchor.btnH }
+            mask: Region { item: isPrimary ? maskItem : null }
         }
     }
 }
