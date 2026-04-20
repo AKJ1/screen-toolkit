@@ -76,7 +76,7 @@ Variants {
     }
     function _annotateOutputDir() {
         var custom = mainInstance?.pluginApi?.pluginSettings?.screenshotPath ?? ""
-        if (custom !== "") return _expandPath(custom.replace(/\/$/, ""))
+        if (custom.trim() !== "") return _expandPath(custom.trim().replace(/\/$/, ""))
         return "__auto__"
     }
     model: Quickshell.screens
@@ -99,7 +99,7 @@ Variants {
         readonly property real localX: root.regionX
         readonly property real localY: root.regionY
         property string tool:         "pencil"
-        property color  drawColor:    "#FF4444"
+        property color  drawColor:    (root.mainInstance?.resultHex ?? "") !== "" ? root.mainInstance.resultHex : "#FF4444"
         property int    drawSize:     3
         property var    strokes:      []
         property var    currentStroke: null
@@ -127,6 +127,7 @@ Variants {
         property real _speedSmooth: 0
         property bool _cacheValid:      false
         property bool _cacheRebuilding: false
+        property int  stepCounter:      1
         function _invalidateCache() {
             _cacheValid      = false
             _cacheRebuilding = false
@@ -243,6 +244,18 @@ Variants {
             } else if (stroke.type === "text") {
                 ctx.font = (stroke.size * 5 + 12) + "px sans-serif"
                 ctx.fillText(stroke.text, stroke.x1, stroke.y1)
+            } else if (stroke.type === "step") {
+                var sr       = Math.max(12, stroke.size * 2 + 8)    // size2→12, size4→16, size7→22
+                var fontSize = Math.max(9,  Math.round(sr * 0.78))   // comfortably inside circle
+                ctx.beginPath()
+                ctx.arc(stroke.x1, stroke.y1, sr, 0, Math.PI * 2)
+                ctx.fillStyle = stroke.color
+                ctx.fill()
+                ctx.fillStyle    = "white"
+                ctx.font         = "bold " + fontSize + "px sans-serif"
+                ctx.textAlign    = "center"
+                ctx.textBaseline = "middle"
+                ctx.fillText(String(stroke.step), stroke.x1, stroke.y1)
             }
             ctx.restore()
         }
@@ -391,6 +404,7 @@ Variants {
                     overlayWin._cacheValid       = false
                     overlayWin._tbUserX          = -1
                     overlayWin._tbUserY          = -1
+                    overlayWin.stepCounter       = 1
                     drawCanvas.requestPaint()
                     cleanupProc.exec({ command: ["bash", "-c", "rm -f /tmp/screen-toolkit-annotate-zoom.png"] })
                 } else {
@@ -500,11 +514,11 @@ Variants {
                 id: zoomBadgeRow
                 anchors.centerIn: parent
                 spacing: Style.marginXS
-                NIcon { icon: "zoom-in"; color: "#ffffff" }
+                NIcon { icon: "zoom-in"; color: Color.mOnPrimary }
                 NText {
-                    text:       Math.round(root.zoomScale) + "× — view only"
-                    color:      "#ffffff"
-                    pointSize:  Style.fontSizeXS
+                    text:      Math.round(root.zoomScale) + root.mainInstance?.pluginApi?.tr("annotate.zoomViewOnly")
+                    color:     Color.mOnPrimary
+                    pointSize: Style.fontSizeXS
                 }
             }
         }
@@ -578,11 +592,20 @@ Variants {
                         var tdx = ex - s.x1
                         var tdy = ey - s.y1
                         hit = tdx * tdx + tdy * tdy < r2 * 4
+                    } else if (s.type === "step") {
+                        var sdx = ex - s.x1
+                        var sdy = ey - s.y1
+                        var sr  = Math.max(10, s.size * 1.5 + 9)
+                        hit = sdx * sdx + sdy * sdy < sr * sr * 1.5
                     }
                     if (hit) {
                         var arr = overlayWin.strokes.slice()
                         arr.splice(i, 1)
                         overlayWin.strokes = arr
+                        var count = 1
+                        for (var j = 0; j < overlayWin.strokes.length; j++)
+                            if (overlayWin.strokes[j].type === "step") count++
+                        overlayWin.stepCounter = count
                         overlayWin._invalidateCache()
                         requestPaint()
                         return
@@ -602,6 +625,25 @@ Variants {
                         return
                     }
                     overlayWin.showPopover = false
+                    if (overlayWin.tool === "step") {
+                        var stepStroke = {
+                            type:  "step",
+                            color: overlayWin.drawColor.toString(),
+                            size:  overlayWin.drawSize,
+                            x1:    mouse.x,
+                            y1:    mouse.y,
+                            step:  overlayWin.stepCounter
+                        }
+                        overlayWin.stepCounter++
+                        var ss = overlayWin.strokes.slice()
+                        ss.push(stepStroke)
+                        overlayWin.strokes = ss
+                        var sctx = cacheCanvas.getContext("2d")
+                        overlayWin._drawStrokeToCtx(sctx, stepStroke)
+                        overlayWin._cacheValid = true
+                        drawCanvas.requestPaint()
+                        return
+                    }
                     if (overlayWin.tool === "text") {
                         overlayWin.textX = mouse.x
                         overlayWin.textY = mouse.y
@@ -790,8 +832,8 @@ Variants {
                : _autoY
             radius:       Style.radiusL
             color:        Color.mSurface
-            border.color: Style.capsuleBorderColor || "transparent"
-            border.width: Style.capsuleBorderWidth || Style.borderS
+            border.color: Style.capsuleBorderColor
+            border.width: Style.capsuleBorderWidth
             component ToolbarSeparator: Rectangle {
                 readonly property bool vertical: toolbar.useVertical
                 width:   vertical ? 28 : Style.borderS
@@ -814,7 +856,9 @@ Variants {
                 NIcon {
                     anchors.centerIn: parent
                     icon:  iconName
-                    color: overlayWin.tool === toolId ? Color.mOnPrimary : Color.mOnSurface
+                    color: overlayWin.tool === toolId ? Color.mOnPrimary
+                         : tbHover.containsMouse      ? Color.mOnHover
+                         : Color.mOnSurface
                 }
                 MouseArea {
                     id: tbHover
@@ -841,7 +885,11 @@ Variants {
                 enabled: btnEnabled
                 opacity: enabled ? 1.0 : 0.3
                 signal clicked()
-                NIcon { anchors.centerIn: parent; icon: iconName; color: Color.mOnSurface }
+                NIcon {
+                    anchors.centerIn: parent
+                    icon:  iconName
+                    color: zbHover.containsMouse ? Color.mOnHover : Color.mOnSurface
+                }
                 MouseArea {
                     id: zbHover
                     anchors.fill: parent
@@ -864,7 +912,9 @@ Variants {
                 NIcon {
                     anchors.centerIn: parent
                     icon:  iconName
-                    color: abHover.containsMouse && danger ? Color.mError || "#f44336" : Color.mOnSurface
+                    color: abHover.containsMouse && danger ? Color.mError || "#f44336"
+                         : abHover.containsMouse           ? Color.mOnHover
+                         : Color.mOnSurface
                 }
                 signal clicked()
                 MouseArea {
@@ -954,8 +1004,8 @@ Variants {
                         var gp = mapToItem(null, mouse.x, mouse.y)
                         toolbar._dragSx  = gp.x
                         toolbar._dragSy  = gp.y
-                        toolbar._dragStx = toolbar.x
-                        toolbar._dragSty = toolbar.y
+                        toolbar._dragStx = overlayWin._tbUserX >= 0 ? overlayWin._tbUserX : toolbar.x
+                        toolbar._dragSty = overlayWin._tbUserY >= 0 ? overlayWin._tbUserY : toolbar.y
                     }
                     onPositionChanged: (mouse) => {
                         if (!pressed) return
@@ -975,7 +1025,8 @@ Variants {
                 { id: "rect",        icon: "square",         tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolRect")        },
                 { id: "circle",      icon: "circle",         tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolCircle")      },
                 { id: "text",        icon: "text-size",      tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolText")        },
-                { id: "blur",        icon: "eye-off",        tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolBlur")        }
+                { id: "blur",        icon: "eye-off",        tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolBlur")        },
+                { id: "step",        icon: "number-123",     tooltip: root.mainInstance?.pluginApi?.tr("annotate.toolStep")        }
             ]
             readonly property var colorDefs: [
                 "#FF4444", "#FF8C00", "#FFD700", "#44FF88",
@@ -989,17 +1040,23 @@ Variants {
             function doUndo() {
                 if (overlayWin.strokes.length > 0) {
                     overlayWin.strokes = overlayWin.strokes.slice(0, -1)
+                    var count = 1
+                    for (var i = 0; i < overlayWin.strokes.length; i++)
+                        if (overlayWin.strokes[i].type === "step") count++
+                    overlayWin.stepCounter = count
                     overlayWin._invalidateCache()
                     drawCanvas.requestPaint()
                 }
             }
             function doClear() {
-                overlayWin.strokes = []
+                overlayWin.strokes     = []
+                overlayWin.stepCounter = 1
                 overlayWin._invalidateCache()
                 drawCanvas.requestPaint()
             }
             function doClose() {
-                overlayWin.strokes = []
+                overlayWin.strokes     = []
+                overlayWin.stepCounter = 1
                 overlayWin._invalidateCache()
                 root.hide()
             }
@@ -1078,9 +1135,19 @@ Variants {
                         primary:   false
                         onClicked: overlayWin.flattenAndSave()
                     }
-                    ActionBtn { iconName: "x"; tip: root.mainInstance?.pluginApi?.tr("annotate.close"); onClicked: toolbar.doClose() }
-                    ToolbarSeparator {}
-                    DragBtn { isVertical: false; anchors.verticalCenter: parent.verticalCenter }
+                    ActionBtn {
+                        iconName:  "refresh"
+                        tip:       root.mainInstance?.pluginApi?.tr("annotate.refresh")
+                        onClicked: {
+                            root.hide()
+                            root.mainInstance?.runAnnotate()
+                        }
+                    }
+                    ActionBtn {
+                        iconName:  "x"
+                        tip:       root.mainInstance?.pluginApi?.tr("annotate.close")
+                        onClicked: toolbar.doClose()
+                    }
                 }
             }
             Component {
@@ -1146,8 +1213,8 @@ Variants {
             visible: overlayWin.isPrimary && overlayWin.showPopover
             radius:       Style.radiusL
             color:        Color.mSurface
-            border.color: Style.capsuleBorderColor || "transparent"
-            border.width: Style.capsuleBorderWidth || Style.borderS
+            border.color: Style.capsuleBorderColor
+            border.width: Style.capsuleBorderWidth
             width:  toolbar.useVertical ? (popContent.implicitWidth  + Style.marginS) : (popContent.implicitWidth  + Style.marginM)
             height: toolbar.useVertical ? (popContent.implicitHeight + Style.marginM) : (popContent.implicitHeight + Style.marginS)
             x: toolbar.useVertical
@@ -1189,7 +1256,7 @@ Variants {
                         model: toolbar.sizeDefs
                         delegate: Rectangle {
                             width:  28; height: 24; radius: Style.radiusS
-                            color:        overlayWin.drawSize === modelData.size ? Color.mPrimaryContainer || Color.mSurfaceVariant : (shH.containsMouse ? Color.mHover : "transparent")
+                            color:        overlayWin.drawSize === modelData.size ? Color.mPrimaryContainer : (shH.containsMouse ? Color.mHover : "transparent")
                             border.color: overlayWin.drawSize === modelData.size ? Color.mPrimary : "transparent"
                             border.width: Style.borderS
                             Row {
@@ -1234,7 +1301,7 @@ Variants {
                         model: toolbar.sizeDefs
                         delegate: Rectangle {
                             width:  32; height: 24; radius: Style.radiusS
-                            color:        overlayWin.drawSize === modelData.size ? Color.mPrimaryContainer || Color.mSurfaceVariant : (shV.containsMouse ? Color.mHover : "transparent")
+                            color:        overlayWin.drawSize === modelData.size ? Color.mPrimaryContainer : (shV.containsMouse ? Color.mHover : "transparent")
                             border.color: overlayWin.drawSize === modelData.size ? Color.mPrimary : "transparent"
                             border.width: Style.borderS
                             Row {

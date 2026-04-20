@@ -62,22 +62,24 @@ Variants {
         property var _shotMeasure: null
         property string _shotColor: "#ffffff"
         function _tr(key, interp) {
-            return measureVariants.mainInstance?.pluginApi?.tr(key, interp ?? {}) ?? key
-        }
-        function expandPath(p) {
-            if (!p || p.trim() === "") return ""
-            if (p.startsWith("~/"))
-                return Quickshell.env("HOME") + "/" + p.substring(2)
-            return p
+            return measureVariants.mainInstance?.pluginApi?.tr(key, interp ?? {})
         }
         function getScreenshotDir() {
+            if (measureVariants.mainInstance && typeof measureVariants.mainInstance.screenshotDir === "function")
+                return measureVariants.mainInstance.screenshotDir()
             if (measureVariants.mainInstance && measureVariants.mainInstance.pluginApi) {
                 var custom = measureVariants.mainInstance.pluginApi.pluginSettings?.screenshotPath ?? ""
-                if (custom.trim() !== "") return expandPath(custom.trim())
+                if (custom.trim() !== "") {
+                    if (custom.startsWith("~/"))
+                        return Quickshell.env("HOME") + "/" + custom.substring(2)
+                    return custom
+                }
             }
             return Quickshell.env("HOME") + "/Pictures/Screenshots"
         }
         function buildMeasureFilename() {
+            if (measureVariants.mainInstance && typeof measureVariants.mainInstance.buildFilename === "function")
+                return measureVariants.mainInstance.buildFilename("measure")
             if (measureVariants.mainInstance && measureVariants.mainInstance.pluginApi) {
                 var fmt = measureVariants.mainInstance.pluginApi.pluginSettings?.filenameFormat ?? ""
                 if (fmt.trim() !== "") {

@@ -13,8 +13,10 @@ Item {
     property bool isVisible: false
     property var activeScreen: null
     property var windowRegions: []
+    property var pluginApi: null
     property bool windowRegionsFetched: false
     property bool isNiri: false
+    
 
     function show(screen) {
         var target = screen || null
@@ -159,7 +161,9 @@ Item {
                 property vector4d selectionRect: Qt.vector4d(win.selX, win.selY, win.selW, win.selH)
                 property real dimOpacity: 0.72
                 property vector2d screenSize: Qt.vector2d(win.width, win.height)
-                fragmentShader: Qt.resolvedUrl("dimming.frag.qsb")
+                property real borderRadius: 8.0
+                property real outlineThickness: 1.5
+                fragmentShader: Qt.resolvedUrl("../shaders/dimming.frag.qsb")
             }
             Canvas {
                 id: guides
@@ -247,7 +251,8 @@ Item {
                 height: Style.controlHeightS
                 radius: Style.controlHeightS / 2
                 color: Qt.rgba(0, 0, 0, 0.85)
-                border.color: Qt.rgba(1, 1, 1, 0.2); border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.2)
+                border.width: Style.borderS
                 x: Math.max(4, Math.min(win.selX + win.selW/2 - width/2, win.width - width - 4))
                 y: win.selY > 48 ? win.selY - height - Style.marginS : win.selY + win.selH + Style.marginS
                 NText {
@@ -285,7 +290,8 @@ Item {
                 height: Style.controlHeightS
                 radius: Style.controlHeightS / 2
                 color: Qt.rgba(0, 0, 0, 0.75)
-                border.color: Qt.rgba(1,1,1,0.1); border.width: 1
+                border.color: Qt.rgba(1,1,1,0.1)
+                border.width: Style.borderS
                 Row {
                     id: _hintRow
                     anchors.centerIn: parent
@@ -293,12 +299,12 @@ Item {
                     NText { text: pluginApi?.tr("regionSelector.drag");        color: Qt.rgba(1,1,1,0.7); pointSize: Style.fontSizeXS; font.weight: Font.Bold }
                     NText { text: pluginApi?.tr("regionSelector.toSelect");    color: Qt.rgba(1,1,1,0.4); pointSize: Style.fontSizeXS }
                     Item { width: Style.marginL; height: 1; visible: !root.isNiri }
-                    Rectangle { width: 1; height: 14; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter; visible: !root.isNiri }
+                    Rectangle { width: Style.borderS; height: 14; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter; visible: !root.isNiri }
                     Item { width: Style.marginL; height: 1; visible: !root.isNiri }
                     NText { text: pluginApi?.tr("regionSelector.clickWindow"); color: Qt.rgba(1,1,1,0.7); pointSize: Style.fontSizeXS; font.weight: Font.Bold; visible: !root.isNiri }
                     NText { text: pluginApi?.tr("regionSelector.toSnap");      color: Qt.rgba(1,1,1,0.4); pointSize: Style.fontSizeXS; visible: !root.isNiri }
                     Item { width: Style.marginL; height: 1 }
-                    Rectangle { width: 1; height: 14; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter }
+                    Rectangle { width: Style.borderS; height: 14; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter }
                     Item { width: Style.marginL; height: 1 }
                     NText { text: pluginApi?.tr("regionSelector.esc");         color: Qt.rgba(1,1,1,0.7); pointSize: Style.fontSizeXS; font.weight: Font.Bold }
                     NText { text: pluginApi?.tr("regionSelector.toCancel");    color: Qt.rgba(1,1,1,0.4); pointSize: Style.fontSizeXS }

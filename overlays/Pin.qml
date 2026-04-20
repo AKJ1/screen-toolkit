@@ -1,18 +1,22 @@
 import QtQuick
+import QtMultimedia
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import qs.Widgets
 import qs.Services.UI
-
 Item {
     id: root
     property var pluginApi: null
-
     ListModel { id: pinsModel }
     readonly property bool hasPins: pinsModel.count > 0
-
+    function _fileType(path) {
+        var ext = path.split(".").pop().toLowerCase()
+        if (ext === "gif")                                      return "gif"
+        if (["mp4","webm","mkv","mov","avi"].indexOf(ext) >= 0) return "video"
+        return "image"
+    }
     function addPin(imgPath, pw, ph, screen) {
         var offset = pinsModel.count * 28
         var w = Math.min(Math.max(pw, 160), 900)
@@ -23,6 +27,7 @@ Item {
         var py = Math.max(0, Math.round((sh - h) / 2) + offset)
         pinsModel.append({
             imgPath:    imgPath,
+            fileType:   root._fileType(imgPath),
             w:          w,
             h:          h,
             posX:       px,
@@ -32,17 +37,14 @@ Item {
             fillMode:   "fit"
         })
     }
-
     function removePin(i) {
         if (i >= 0 && i < pinsModel.count)
             pinsModel.remove(i)
     }
-
     function updatePin(i, props) {
         if (i < 0 || i >= pinsModel.count) return
         for (var k in props) pinsModel.setProperty(i, k, props[k])
     }
-
     Variants {
         model: Quickshell.screens
         delegate: PanelWindow {
@@ -50,10 +52,8 @@ Item {
             screen: modelData
             id: pinWindow
             readonly property string _screenName: modelData.name
-
             anchors { top: true; bottom: true; left: true; right: true }
             color: "transparent"
-
             visible: {
                 var _ = pinsModel.count
                 for (var i = 0; i < pinsModel.count; i++) {
@@ -62,19 +62,15 @@ Item {
                 }
                 return false
             }
-
             WlrLayershell.layer: WlrLayer.Top
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
             WlrLayershell.exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "noctalia-pin"
-
             mask: Region { item: maskRect }
-
             Rectangle {
                 id: maskRect
                 color: "transparent"
                 visible: pinWindow.visible
-
                 property var _bbox: {
                     var _ = pinsModel.count
                     var minX = 999999, minY = 999999, maxX = 0, maxY = 0
@@ -90,13 +86,11 @@ Item {
                     }
                     return found ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY } : { x: 0, y: 0, w: 0, h: 0 }
                 }
-
                 x:      _bbox.x
                 y:      _bbox.y
                 width:  _bbox.w
                 height: _bbox.h
             }
-
             readonly property var localPins: {
                 var _ = pinsModel.count
                 var result = []
@@ -105,6 +99,7 @@ Item {
                     if (p.screenName === _screenName || p.screenName === "")
                         result.push({
                             imgPath:    p.imgPath,
+                            fileType:   p.fileType,
                             w:          p.w,
                             h:          p.h,
                             pinOpacity: p.pinOpacity,
@@ -114,7 +109,6 @@ Item {
                 }
                 return result
             }
-
             Repeater {
                 model: localPins
                 delegate: Item {
@@ -122,28 +116,28 @@ Item {
                     readonly property int edgePx:   8
                     readonly property int cornerPx: 18
                     readonly property int globalIdx: modelData.globalIdx
-                    property real   pinW:       globalIdx < pinsModel.count ? pinsModel.get(globalIdx).w        : 0
-                    property real   pinH:       globalIdx < pinsModel.count ? pinsModel.get(globalIdx).h        : 0
+                    property real   pinW:       globalIdx < pinsModel.count ? pinsModel.get(globalIdx).w          : 0
+                    property real   pinH:       globalIdx < pinsModel.count ? pinsModel.get(globalIdx).h          : 0
                     property real   pinOpacity: globalIdx < pinsModel.count ? pinsModel.get(globalIdx).pinOpacity : 1.0
-                    property string fillMode:   globalIdx < pinsModel.count ? pinsModel.get(globalIdx).fillMode : "fit"
+                    property string fillMode:   globalIdx < pinsModel.count ? pinsModel.get(globalIdx).fillMode   : "fit"
+                    property string fileType:   globalIdx < pinsModel.count ? pinsModel.get(globalIdx).fileType   : "image"
                     readonly property string pinImgPath: globalIdx < pinsModel.count ? pinsModel.get(globalIdx).imgPath : ""
                     property bool _dragging: false
                     property bool _ctxOpen:  false
+                    property bool _playing:  true
+                    property bool _muted:    false
                     x: globalIdx < pinsModel.count ? pinsModel.get(globalIdx).posX : 0
                     y: globalIdx < pinsModel.count ? pinsModel.get(globalIdx).posY : 0
                     width:  pinW
                     height: pinH
-
                     onXChanged: _refreshMask()
                     onYChanged: _refreshMask()
                     onPinWChanged: _refreshMask()
                     onPinHChanged: _refreshMask()
-
                     function _refreshMask() {
                         if (_dragging)
                             root.updatePin(globalIdx, { posX: x, posY: y, w: pinW, h: pinH })
                     }
-
                     function resolveFillMode(key) {
                         switch (key) {
                             case "crop":    return Image.PreserveAspectCrop
@@ -151,26 +145,62 @@ Item {
                             default:        return Image.PreserveAspectFit
                         }
                     }
-
                     Rectangle {
                         id: pinCard
                         anchors.fill: parent
                         radius: Style.radiusL
-                        color:  Color.mSurface
+                        color:  "transparent"
                         border.color: cardHover.hovered
                             ? Qt.rgba(1, 1, 1, 0.28)
                             : Qt.rgba(1, 1, 1, 0.07)
-                        border.width: Style.capsuleBorderWidth || 1
+                        border.width: Style.capsuleBorderWidth
                         clip: true
                         opacity: pinDelegate.pinOpacity
                         Behavior on border.color { ColorAnimation { duration: 120 } }
                         Image {
                             anchors.fill: parent
-                            source: pinDelegate.pinImgPath !== ""
+                            visible: pinDelegate.fileType === "image"
+                            source: pinDelegate.fileType === "image" && pinDelegate.pinImgPath !== ""
                                 ? "file://" + pinDelegate.pinImgPath : ""
                             fillMode: pinDelegate.resolveFillMode(pinDelegate.fillMode)
                             smooth: true
                             asynchronous: true
+                        }
+                        AnimatedImage {
+                            anchors.fill: parent
+                            visible: pinDelegate.fileType === "gif"
+                            source: pinDelegate.fileType === "gif" && pinDelegate.pinImgPath !== ""
+                                ? "file://" + pinDelegate.pinImgPath : ""
+                            fillMode: pinDelegate.resolveFillMode(pinDelegate.fillMode)
+                            playing: pinDelegate._playing
+                            smooth: true
+                            asynchronous: true
+                        }
+                        MediaPlayer {
+                            id: mediaPlayer
+                            source: pinDelegate.fileType === "video" && pinDelegate.pinImgPath !== ""
+                                ? "file://" + pinDelegate.pinImgPath : ""
+                            loops: MediaPlayer.Infinite
+                            videoOutput: videoOut
+                            audioOutput: AudioOutput {
+                                id: audioOut
+                                muted: pinDelegate._muted
+                            }
+                            Component.onCompleted: if (pinDelegate.fileType === "video") play()
+                            Component.onDestruction: stop()
+                        }
+                        VideoOutput {
+                            id: videoOut
+                            anchors.fill: parent
+                            visible: pinDelegate.fileType === "video"
+                            fillMode: pinDelegate.resolveFillMode(pinDelegate.fillMode)
+                        }
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: Style.marginS
+                            visible: pinDelegate.pinImgPath === ""
+                            NIcon { anchors.horizontalCenter: parent.horizontalCenter; icon: "photo-off"; color: Color.mOnSurfaceVariant }
+                            NText { anchors.horizontalCenter: parent.horizontalCenter; text: "No file"; color: Color.mOnSurfaceVariant; pointSize: Style.fontSizeXS }
                         }
                         HoverHandler { id: cardHover }
                         MouseArea {
@@ -272,11 +302,61 @@ Item {
                                 Rectangle { width: 1; height: 18; radius: 1; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter }
                                 Rectangle {
                                     width: 28; height: 28; radius: 14
+                                    visible: pinDelegate.fileType === "video" || pinDelegate.fileType === "gif"
+                                    color: playMA.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    NIcon {
+                                        anchors.centerIn: parent; scale: 0.8; color: "white"
+                                        icon: pinDelegate._playing ? "player-pause" : "player-play"
+                                    }
+                                    MouseArea {
+                                        id: playMA; anchors.fill: parent
+                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor; preventStealing: true
+                                        onClicked: {
+                                            pinDelegate._playing = !pinDelegate._playing
+                                            if (pinDelegate.fileType === "video") {
+                                                if (pinDelegate._playing) mediaPlayer.play()
+                                                else mediaPlayer.pause()
+                                            }
+                                        }
+                                        onEntered: TooltipService.show(parent, pinDelegate._playing
+                                            ? root.pluginApi?.tr("pin.pause")
+                                            : root.pluginApi?.tr("pin.play"))
+                                        onExited: TooltipService.hide()
+                                    }
+                                }
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    visible: pinDelegate.fileType === "video"
+                                    color: muteMA.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    NIcon {
+                                        anchors.centerIn: parent; scale: 0.8; color: "white"
+                                        icon: pinDelegate._muted ? "volume-off" : "volume"
+                                    }
+                                    MouseArea {
+                                        id: muteMA; anchors.fill: parent
+                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor; preventStealing: true
+                                        onClicked: {
+                                            pinDelegate._muted = !pinDelegate._muted
+                                        }
+                                        onEntered: TooltipService.show(parent, pinDelegate._muted
+                                            ? root.pluginApi?.tr("pin.unmute")
+                                            : root.pluginApi?.tr("pin.mute"))
+                                        onExited: TooltipService.hide()
+                                    }
+                                }
+                                Rectangle { width: 1; height: 18; radius: 1; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter; visible: pinDelegate.fileType === "video" }
+                                Rectangle {
+                                    width: 28; height: 28; radius: 14
+                                    visible: pinDelegate.fileType !== "video"
                                     color: fillMA.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
                                     anchors.verticalCenter: parent.verticalCenter
                                     NIcon {
                                         anchors.centerIn: parent; scale: 0.8; color: "white"
-                                        icon: pinDelegate.fillMode === "fit" ? "aspect-ratio" : pinDelegate.fillMode === "crop" ? "crop" : "arrows-maximize"
+                                        icon: pinDelegate.fillMode === "fit" ? "aspect-ratio"
+                                            : pinDelegate.fillMode === "crop" ? "crop"
+                                            : "arrows-maximize"
                                     }
                                     MouseArea {
                                         id: fillMA; anchors.fill: parent
@@ -288,12 +368,13 @@ Item {
                                             root.updatePin(pinDelegate.globalIdx, { fillMode: next })
                                         }
                                         onEntered: TooltipService.show(parent,
-                                            pinDelegate.fillMode === "fit"  ? root.pluginApi.tr("tooltips.switchToWide") :
-                                            pinDelegate.fillMode === "crop" ? root.pluginApi.tr("tooltips.switchToSquare") : root.pluginApi.tr("tooltips.flipCamera"))
+                                            pinDelegate.fillMode === "fit"  ? root.pluginApi?.tr("pin.fillFit")
+                                            : pinDelegate.fillMode === "crop" ? root.pluginApi?.tr("pin.fillCrop")
+                                            : root.pluginApi?.tr("pin.fillStretch"))
                                         onExited: TooltipService.hide()
                                     }
                                 }
-                                Rectangle { width: 1; height: 18; radius: 1; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter }
+                                Rectangle { width: 1; height: 18; radius: 1; color: Qt.rgba(1,1,1,0.25); anchors.verticalCenter: parent.verticalCenter; visible: pinDelegate.fileType !== "video" }
                                 Rectangle {
                                     width: 28; height: 28; radius: 14
                                     color: closeMA.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
@@ -303,7 +384,7 @@ Item {
                                         id: closeMA; anchors.fill: parent
                                         hoverEnabled: true; cursorShape: Qt.PointingHandCursor; preventStealing: true
                                         onClicked: root.removePin(pinDelegate.globalIdx)
-                                        onEntered: TooltipService.show(parent, root.pluginApi.tr("pin.close"))
+                                        onEntered: TooltipService.show(parent, root.pluginApi?.tr("pin.close"))
                                         onExited: TooltipService.hide()
                                     }
                                 }
@@ -330,7 +411,6 @@ Item {
                             }
                         }
                     }
-
                     component ResizeEdge: MouseArea {
                         id: re
                         property bool isLeft:   false
@@ -382,7 +462,6 @@ Item {
                     ResizeEdge { isLeft: true;   isBottom: true; x: 0;                           y: pinDelegate.pinH - cornerPx; width: cornerPx; height: cornerPx; cursorShape: Qt.SizeBDiagCursor }
                     ResizeEdge { isRight: true;  isTop: true;    x: pinDelegate.pinW - cornerPx; y: 0;                           width: cornerPx; height: cornerPx; cursorShape: Qt.SizeBDiagCursor }
                     ResizeEdge { isLeft: true;   isTop: true;    x: 0;                           y: 0;                           width: cornerPx; height: cornerPx; cursorShape: Qt.SizeFDiagCursor }
-
                     Item {
                         id: ctxMenu
                         visible: false
@@ -414,7 +493,8 @@ Item {
                             width: implicitWidth; height: implicitHeight
                             radius: Style.radiusM
                             color: Color.mSurface
-                            border.color: Qt.rgba(1, 1, 1, 0.12); border.width: Style.capsuleBorderWidth || 1
+                            border.color: Qt.rgba(1, 1, 1, 0.12)
+                            border.width: Style.capsuleBorderWidth
                             Column {
                                 id: menuCol
                                 anchors { left: parent.left; right: parent.right; top: parent.top; margins: Style.marginS }
@@ -441,26 +521,33 @@ Item {
                                 }
                                 MenuItem {
                                     mIcon: "aspect-ratio"
-                                    mLabel: root.pluginApi.tr("pin.fillFit")
+                                    mLabel: root.pluginApi?.tr("pin.fillFit")
                                     mEnabled: pinDelegate.fillMode !== "fit"
+                                    visible: pinDelegate.fileType !== "video"
                                     onActivated: root.updatePin(pinDelegate.globalIdx, { fillMode: "fit" })
                                 }
                                 MenuItem {
                                     mIcon: "crop"
-                                    mLabel: root.pluginApi.tr("pin.fillCrop")
+                                    mLabel: root.pluginApi?.tr("pin.fillCrop")
                                     mEnabled: pinDelegate.fillMode !== "crop"
+                                    visible: pinDelegate.fileType !== "video"
                                     onActivated: root.updatePin(pinDelegate.globalIdx, { fillMode: "crop" })
                                 }
                                 MenuItem {
                                     mIcon: "arrows-maximize"
-                                    mLabel: root.pluginApi.tr("pin.fillStretch")
+                                    mLabel: root.pluginApi?.tr("pin.fillStretch")
                                     mEnabled: pinDelegate.fillMode !== "stretch"
+                                    visible: pinDelegate.fileType !== "video"
                                     onActivated: root.updatePin(pinDelegate.globalIdx, { fillMode: "stretch" })
                                 }
-                                Rectangle { width: parent.width; height: 1; color: Qt.rgba(1,1,1,0.08) }
+                                Rectangle {
+                                    width: parent.width; height: 1
+                                    color: Qt.rgba(1,1,1,0.08)
+                                    visible: pinDelegate.fileType !== "video"
+                                }
                                 MenuItem {
                                     mIcon: "x"
-                                    mLabel: root.pluginApi.tr("pin.close")
+                                    mLabel: root.pluginApi?.tr("pin.close")
                                     onActivated: root.removePin(pinDelegate.globalIdx)
                                 }
                             }
