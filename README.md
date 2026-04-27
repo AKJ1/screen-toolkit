@@ -192,14 +192,17 @@ Screen-Toolkit/
 
 All settings are configurable via the plugin settings panel.
 
-| Setting                     | Description                               | Default                  |
-| --------------------------- | ----------------------------------------- | ------------------------ |
-| Screenshot Path             | Directory for screenshots and annotations | `~/Pictures/Screenshots` |
-| Video Path                  | Directory for recordings                  | `~/Videos`               |
-| Filename Format             | Timestamp template for generated files    | `%Y-%m-%d_%H-%M-%S`      |
-| Skip Recording Confirmation | Start recording immediately               | `false`                  |
-| Copy Recording to Clipboard | Copy output after recording               | `false`                  |
-| GIF Max Seconds             | Maximum GIF duration                      | `30`                     |
+| Setting                     | Description                                     | Default                          |
+| --------------------------- | ----------------------------------------------- | -------------------------------- |
+| Screenshot Path             | Directory for screenshots and annotations       | `~/Pictures/Screenshots`        |
+| Video Path                  | Directory for recordings                        | `~/Videos`                      |
+| Filename Format             | Timestamp template for generated files          | `%Y-%m-%d_%H-%M-%S`            |
+| x0.2 API Key                | API key for uploading and sharing captures      | —                                |
+| x0.2 Link Expiry           | How long shared links remain valid              | `7d`                             |
+| Skip Share Popover         | Share immediately without confirmation popup    | `false`                          |
+| Skip Recording Confirmation | Start recording immediately                     | `false`                          |
+| Copy Recording to Clipboard | Copy output after recording                     | `false`                          |
+| GIF Max Seconds            | Maximum GIF duration                            | `30`                             |
 
 Files automatically receive appropriate extensions (`.png`, `.mp4`, `.gif`).
 
