@@ -61,7 +61,7 @@ When recording is active, the plugin icon shows a red pulsing dot. Clicking the 
   <img src="assets/palette.png" width="45%" />
   <img src="assets/ocr.png" width="45%" />
 </p>
----
+
 
 ## Requirements
 
