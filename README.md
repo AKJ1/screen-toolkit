@@ -336,5 +336,3 @@ MIT License
 
 Contributions, issues, and feature requests are welcome.
 
-Repository: [https://github.com/noctalia-dev/noctalia-plugins](https://github.com/noctalia-dev/noctalia-plugins)
-
