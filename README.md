@@ -16,7 +16,7 @@ Screen Toolkit provides a single integrated panel for advanced screen interactio
 | ---------------------- | ----------------------------------------------------------------------------------- |
 | **Color Picker**       | Inspect any pixel and retrieve HEX, RGB, HSV, and HSL values instantly.             |
 | **Annotate**           | Draw on screenshots using pens, highlights, arrows, shapes, text, and blur effects. |
-| **Measure**            | Measure precise pixel distances using on-screen line tools.                         |
+| **Measure**            | Measure precise pixel distances using on-screen line tools. Hold **Alt** while dragging to constrain to horizontal or vertical axis.                      |
 | **Pin**                | Pin screenshots or local media as floating overlays on the screen.                  |
 | **Palette Extraction** | Extract dominant color palettes from selected regions.                              |
 | **OCR**                | Extract text from images with multilingual support and translation.                 |
