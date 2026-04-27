@@ -14,3 +14,5 @@ grim -g "${GX},${GY} 11x11" "$FILE" 2>/dev/null || exit 1
 magick "$FILE" -alpha off \
   -format '%[fx:int(255*u.p{5,5}.r)] %[fx:int(255*u.p{5,5}.g)] %[fx:int(255*u.p{5,5}.b)]' \
   info:- 2>/dev/null
+
+

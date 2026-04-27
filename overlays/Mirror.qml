@@ -6,6 +6,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Widgets
 import qs.Services.UI
+import "../utils/utils.js" as U
 Item {
     id: root
     property var pluginApi: null
@@ -51,40 +52,11 @@ Item {
     property bool   _isSaving:       false
     property int    _recElapsed:     0
     property string _recTmpPath:     ""
+    // Derived from Style so all sizing scales with the user's UI scale/density settings
+    readonly property int _ctrlBtnSize: Style.baseWidgetSize - Style.borderS
+    readonly property int _ctrlPillH:   _ctrlBtnSize + Style.marginS * 2
     property var _imgCapture: null
     property var _recorder:   null
-    function _expandPath(p) {
-        if (!p || p === "") return ""
-        if (p.startsWith("~/")) return Quickshell.env("HOME") + "/" + p.substring(2)
-        return p
-    }
-    function _screenshotDir() {
-        var shared = pluginApi?.pluginSettings?.screenshotPath ?? ""
-        if (shared.trim() !== "") return _expandPath(shared.trim())
-        return Quickshell.env("HOME") + "/Pictures/Screenshots"
-    }
-    function _videoDir() {
-        var shared = pluginApi?.pluginSettings?.videoPath ?? ""
-        if (shared.trim() !== "") return _expandPath(shared.trim())
-        return Quickshell.env("HOME") + "/Videos"
-    }
-    function _buildFilename(prefix, ext) {
-        var fmt = pluginApi?.pluginSettings?.filenameFormat ?? ""
-        if (fmt.trim() !== "") {
-            var now  = new Date()
-            var stem = fmt.trim()
-                .replace(/%Y/g, Qt.formatDateTime(now, "yyyy"))
-                .replace(/%m/g, Qt.formatDateTime(now, "MM"))
-                .replace(/%d/g, Qt.formatDateTime(now, "dd"))
-                .replace(/%H/g, Qt.formatDateTime(now, "HH"))
-                .replace(/%M/g, Qt.formatDateTime(now, "mm"))
-                .replace(/%S/g, Qt.formatDateTime(now, "ss"))
-                .replace(/[\/\\\n\r\0]/g, "_").trim()
-            if (stem !== "") return stem + ext
-        }
-        return prefix + "-" + Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss") + ext
-    }
-    function _shellEscape(str) { return "'" + str.replace(/'/g, "'\\''") + "'" }
     function _formatTime(secs) {
         var m = Math.floor(secs / 60), s = secs % 60
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
@@ -122,23 +94,24 @@ Item {
         root._imgCapture.captureToFile("/tmp/mirror-shot-" + Date.now() + ".png")
     }
     function _onImageCaptured(tmpPath) {
-        var dir     = _screenshotDir()
-        var file    = dir + "/" + _buildFilename("mirror", ".png")
+        var home = Quickshell.env("HOME")
+        var dir     = U.screenshotDir(home, pluginApi?.pluginSettings?.screenshotPath)
+        var file    = dir + "/" + U.buildFilename("mirror", ".png", pluginApi?.pluginSettings?.filenameFormat)
         var filters = []
         if (root.isFlipped) filters.push("hflip")
         if (root.isSquare)  filters.push("crop=min(iw\\,ih):min(iw\\,ih)")
         screenshotProc.destPath = file
         var cmd
         if (filters.length > 0) {
-            cmd = "mkdir -p " + _shellEscape(dir) + " && " +
-                  "ffmpeg -y -i " + _shellEscape(tmpPath) + " " +
-                  "-vf " + _shellEscape(filters.join(",")) + " " +
+            cmd = "mkdir -p " + U.shellEscape(dir) + " && " +
+                  "ffmpeg -y -i " + U.shellEscape(tmpPath) + " " +
+                  "-vf " + U.shellEscape(filters.join(",")) + " " +
                   "-compression_level 0 -update 1 " +
-                  _shellEscape(file) + " 2>/dev/null && " +
-                  "rm -f " + _shellEscape(tmpPath)
+                  U.shellEscape(file) + " 2>/dev/null && " +
+                  "rm -f " + U.shellEscape(tmpPath)
         } else {
-            cmd = "mkdir -p " + _shellEscape(dir) + " && mv " +
-                  _shellEscape(tmpPath) + " " + _shellEscape(file)
+            cmd = "mkdir -p " + U.shellEscape(dir) + " && mv " +
+                  U.shellEscape(tmpPath) + " " + U.shellEscape(file)
         }
         screenshotProc.exec({ command: ["bash", "-c", cmd] })
     }
@@ -179,27 +152,28 @@ Item {
         if (root._recorder) root._recorder.stop()
     }
     function _doSaveRecord() {
-        var dir     = _videoDir()
-        var dest    = dir + "/" + _buildFilename("mirror", ".mp4")
+        var home = Quickshell.env("HOME")
+        var dir     = U.videoDir(home, pluginApi?.pluginSettings?.videoPath)
+        var dest    = dir + "/" + U.buildFilename("mirror", ".mp4", pluginApi?.pluginSettings?.filenameFormat)
         var filters = []
         if (root.isFlipped) filters.push("hflip")
         if (root.isSquare)  filters.push("crop=min(iw\\,ih):min(iw\\,ih)")
         recSaveProc.savedPath = dest
         if (filters.length > 0) {
             var cmd =
-                "mkdir -p " + _shellEscape(dir) + " && " +
-                "ffmpeg -y -i " + _shellEscape(root._recTmpPath) + " " +
-                "-vf " + _shellEscape(filters.join(",")) + " " +
+                "mkdir -p " + U.shellEscape(dir) + " && " +
+                "ffmpeg -y -i " + U.shellEscape(root._recTmpPath) + " " +
+                "-vf " + U.shellEscape(filters.join(",")) + " " +
                 "-c:v libx264 -crf 14 -preset slow -pix_fmt yuv420p " +
                 (root._audioEnabled ? "-c:a aac -b:a 192k " : "-an ") +
-                _shellEscape(dest) + " 2>/dev/null && " +
-                "rm -f " + _shellEscape(root._recTmpPath)
+                U.shellEscape(dest) + " 2>/dev/null && " +
+                "rm -f " + U.shellEscape(root._recTmpPath)
             recSaveProc.exec({ command: ["bash", "-c", cmd] })
         } else {
             recSaveProc.exec({ command: [
                 "bash", "-c",
-                "mkdir -p " + _shellEscape(dir) + " && " +
-                "mv " + _shellEscape(root._recTmpPath) + " " + _shellEscape(dest)
+                "mkdir -p " + U.shellEscape(dir) + " && " +
+                "mv " + U.shellEscape(root._recTmpPath) + " " + U.shellEscape(dest)
             ]})
         }
     }
@@ -345,14 +319,14 @@ Item {
                 }
                 Rectangle {
                     visible: root._isRecording
-                    anchors { top: parent.top; left: parent.left; margins: 8 }
-                    width: recBadge.implicitWidth + 12; height: 22; radius: Style.radiusS
+                    anchors { top: parent.top; left: parent.left; margins: Style.marginXS * 2 }
+                    width: recBadge.implicitWidth + Style.marginM; height: Style.marginXL + Style.marginXXS; radius: Style.radiusS
                     color: Qt.rgba(0, 0, 0, 0.65); z: 5
                     Row {
                         id: recBadge
                         anchors.centerIn: parent; spacing: Style.marginXS
                         Rectangle {
-                            width: 7; height: 7; radius: 4; color: "#FF4444"
+                            width: Style.marginXS * 2; height: Style.marginXS * 2; radius: Style.radiusXXS; color: "#FF4444"
                             anchors.verticalCenter: parent.verticalCenter
                             SequentialAnimation on opacity {
                                 running: root._isRecording; loops: Animation.Infinite
@@ -369,8 +343,8 @@ Item {
                 }
                 Rectangle {
                     visible: root._isSaving
-                    anchors { top: parent.top; left: parent.left; margins: 8 }
-                    width: savingBadge.implicitWidth + 12; height: 22; radius: Style.radiusS
+                    anchors { top: parent.top; left: parent.left; margins: Style.marginXS * 2 }
+                    width: savingBadge.implicitWidth + Style.marginM; height: Style.marginXL + Style.marginXXS; radius: Style.radiusS
                     color: Qt.rgba(0, 0, 0, 0.65); z: 5
                     Row {
                         id: savingBadge
@@ -435,7 +409,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottomMargin: Style.marginM
                     width:  ctrlRow.implicitWidth + Style.marginM * 2
-                    height: 44; radius: 22
+                    height: root._ctrlPillH; radius: root._ctrlPillH / 2
                     color:  Qt.rgba(0, 0, 0, 0.55); z: 3
                     opacity: (containerHover.hovered && !root._countdownActive && !root._isSaving) ? 1.0 : 0.0
                     Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -443,7 +417,7 @@ Item {
                         id: ctrlRow
                         anchors.centerIn: parent; spacing: Style.marginS
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             visible: !root._isRecording
                             color: sqHover.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
                             NIcon { anchors.centerIn: parent; icon: root.isSquare ? "arrows-maximize" : "crop"; color: "white" }
@@ -465,7 +439,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             visible: !root._isRecording
                             color: root.isFlipped ? Qt.rgba(1,1,1,0.25) : (flipHover.containsMouse ? Qt.rgba(1,1,1,0.15) : "transparent")
                             NIcon { anchors.centerIn: parent; icon: "flip-horizontal"; color: "white" }
@@ -480,7 +454,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             color: shotHover.containsMouse ? Qt.rgba(1,1,1,0.25) : "transparent"
                             NIcon { anchors.centerIn: parent; icon: "camera"; color: "white" }
                             MouseArea {
@@ -495,7 +469,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             color: recHover.containsMouse
                                 ? (root._isRecording ? Qt.rgba(1,0,0,0.55) : Qt.rgba(1,1,1,0.25))
                                 : (root._isRecording ? Qt.rgba(1,0,0,0.30) : "transparent")
@@ -519,7 +493,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             color: root._audioEnabled
                                 ? Qt.rgba(1,1,1,0.25)
                                 : (micHover.containsMouse ? Qt.rgba(1,1,1,0.15) : "transparent")
@@ -542,7 +516,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             visible: !root._isRecording
                             color: root._pinOnShot ? Qt.rgba(1,1,1,0.25) : (pinToggleMA.containsMouse ? Qt.rgba(1,1,1,0.15) : "transparent")
                             NIcon { anchors.centerIn: parent; icon: root._pinOnShot ? "pin" : "pinned-off"; color: "white" }
@@ -557,7 +531,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             visible: mediaDevices.videoInputs.length > 1 && !root._isRecording
                             color: camHover.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
                             NIcon { anchors.centerIn: parent; icon: "camera-rotate"; color: "white" }
@@ -570,7 +544,7 @@ Item {
                             }
                         }
                         Rectangle {
-                            width: 32; height: 32; radius: 16
+                            width: root._ctrlBtnSize; height: root._ctrlBtnSize; radius: root._ctrlBtnSize / 2
                             visible: !root._isRecording
                             color: closeHover.containsMouse ? Qt.rgba(1,1,1,0.2) : "transparent"
                             NIcon { anchors.centerIn: parent; icon: "x"; color: "white" }
@@ -613,7 +587,8 @@ Item {
                         root.xPos = Math.max(0, nx); root.yPos = Math.max(0, ny)
                     }
                     Rectangle {
-                        anchors.centerIn: parent; width: 8; height: 8; radius: 4
+                        anchors.centerIn: parent
+                        width: Style.marginXS * 2; height: Style.marginXS * 2; radius: Style.radiusXXS
                         color: Color.mPrimary
                         opacity: parent.containsMouse || parent.pressed ? 1.0 : 0.4
                         Behavior on opacity { NumberAnimation { duration: 120 } }

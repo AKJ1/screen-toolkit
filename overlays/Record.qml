@@ -5,6 +5,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Widgets
 import qs.Services.UI
+import "../utils/utils.js" as U
 Item {
     id: root
     property var pluginApi: null
@@ -31,32 +32,6 @@ Item {
     readonly property bool isConverting: recordState === "converting"
     readonly property bool isDone:       recordState === "done"
     signal dismissed()
-    function _expandPath(p) {
-        if (!p || p === "") return ""
-        if (p.startsWith("~/")) return Quickshell.env("HOME") + "/" + p.substring(2)
-        return p
-    }
-    function _recordOutputDir() {
-        var custom = pluginApi?.pluginSettings?.videoPath ?? ""
-        if (custom !== "") return _expandPath(custom.trim().replace(/\/$/, ""))
-        return Quickshell.env("HOME") + "/Videos"
-    }
-    function _buildFilename(toolName, ext) {
-        var fmt = pluginApi?.pluginSettings?.filenameFormat ?? ""
-        if (fmt.trim() !== "") {
-            var now = new Date()
-            var name = fmt.trim()
-                .replace(/%Y/g, Qt.formatDateTime(now, "yyyy"))
-                .replace(/%m/g, Qt.formatDateTime(now, "MM"))
-                .replace(/%d/g, Qt.formatDateTime(now, "dd"))
-                .replace(/%H/g, Qt.formatDateTime(now, "HH"))
-                .replace(/%M/g, Qt.formatDateTime(now, "mm"))
-                .replace(/%S/g, Qt.formatDateTime(now, "ss"))
-                .replace(/[\/\\\n\r\0]/g, "_").trim()
-            if (name !== "") return name + ext
-        }
-        return toolName + "-" + Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss") + ext
-    }
     function startRecording(regionStr, fmt, audOut, audIn, cursor, uiOffsetX, uiOffsetY, screen) {
         if (root.isRecording || root.isConverting) return
         root.format        = (fmt === "mp4") ? "mp4" : "gif"
@@ -86,37 +61,36 @@ Item {
         elapsedTimer.start()
         var cmd
         if (root._recorderBin === "wf-recorder") {
-            cmd = "wf-recorder -g " + shellEscape(regionStr) +
+            cmd = "wf-recorder -g " + U.shellEscape(regionStr) +
                   (root.audioOutput
                       ? " -a=$(pactl get-default-sink 2>/dev/null).monitor"
                       : root.audioInput
                           ? " -a=$(pactl get-default-source 2>/dev/null)"
                           : "") +
-                  " -f " + shellEscape(root.mp4Path) + " 2>/dev/null" +
-                  "; [ -s " + shellEscape(root.mp4Path) + " ] && exit 0 || exit 1"
+                  " -f " + U.shellEscape(root.mp4Path) + " 2>/dev/null" +
+                  "; [ -s " + U.shellEscape(root.mp4Path) + " ] && exit 0 || exit 1"
         } else {
-            cmd = "wl-screenrec -g " + shellEscape(regionStr) +
+            cmd = "wl-screenrec -g " + U.shellEscape(regionStr) +
                   (root.includeCursor ? "" : " --no-cursor") +
                   (root.audioOutput
                       ? " --audio --audio-device $(pactl get-default-sink 2>/dev/null).monitor"
                       : root.audioInput
                           ? " --audio --audio-device $(pactl get-default-source 2>/dev/null)"
                           : "") +
-                  " -f " + shellEscape(root.mp4Path) + " 2>/dev/null" +
-                  "; [ -s " + shellEscape(root.mp4Path) + " ] && exit 0 || exit 1"
+                  " -f " + U.shellEscape(root.mp4Path) + " 2>/dev/null" +
+                  "; [ -s " + U.shellEscape(root.mp4Path) + " ] && exit 0 || exit 1"
         }
         wfRecorderProc.exec({ command: ["bash", "-c", cmd] })
     }
     function stopRecording() {
         if (!root.isRecording) return
-        root.isRecording = false
         stopProc.exec({ command: ["bash", "-c", "pkill -INT " + root._recorderBin + " 2>/dev/null || true"] })
     }
     function dismiss() {
         if (root.isRecording) root.stopRecording()
         var toClipboard = root.pluginApi?.pluginSettings?.recordCopyToClipboard ?? false
         if (root.gifPath !== "" && !toClipboard)
-            stopProc.exec({ command: ["bash", "-c", "rm -f " + shellEscape(root.gifPath)] })
+            stopProc.exec({ command: ["bash", "-c", "rm -f " + U.shellEscape(root.gifPath)] })
         root.recordState    = ""
         root.gifPath        = ""
         root._primaryScreen = null
@@ -136,27 +110,32 @@ Item {
         }
     }
     function _copyPathToClipboard(path) {
-        var cmd = "printf 'file://%s\\r\\n' " + shellEscape(path) +
+        var cmd = "printf 'file://%s\\r\\n' " + U.shellEscape(path) +
                   " | wl-copy --type text/uri-list"
         clipProc.exec({ command: ["bash", "-c", cmd] })
     }
     function _saveToFile() {
         var ext  = root.format === "mp4" ? ".mp4" : ".gif"
-        var dir  = root._recordOutputDir()
-        var dest = dir + "/" + root._buildFilename("record", ext)
+        var home = Quickshell.env("HOME")
+        var dir  = U.videoDir(home, pluginApi?.pluginSettings?.videoPath)
+        var dest = dir + "/" + U.buildFilename("record", ext, pluginApi?.pluginSettings?.filenameFormat)
         saveProc.savedPath = dest
         saveProc.exec({ command: ["bash", "-c",
-            "mkdir -p " + shellEscape(dir) + " && " +
-            "cp " + shellEscape(root.gifPath) + " " + shellEscape(dest)
+            "mkdir -p " + U.shellEscape(dir) + " && " +
+            "cp " + U.shellEscape(root.gifPath) + " " + U.shellEscape(dest)
         ]})
-    }
-    function shellEscape(str) {
-        return "'" + str.replace(/'/g, "'\\''") + "'"
     }
     function formatTime(secs) {
         var m = Math.floor(secs / 60)
         var s = secs % 60
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s
+    }
+    function _thumbCmd(srcPath) {
+        return "DUR=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 " + U.shellEscape(srcPath) + " 2>/dev/null); " +
+               "if [ -z \"$DUR\" ] || [ \"$DUR\" = \"N/A\" ]; then DUR=1; fi; " +
+               "MID=$(echo \"$DUR / 2\" | bc -l 2>/dev/null || echo \"0.5\"); " +
+               "ffmpeg -y -ss \"$MID\" -i " + U.shellEscape(srcPath) +
+               " -frames:v 1 /tmp/screen-toolkit-record-thumb.png 2>/dev/null"
     }
     Process {
         id: wfRecorderProc
@@ -172,26 +151,25 @@ Item {
                     root.gifPath = optimOut + ".mp4"
                     var needsRecode = root.audioOutput || root.audioInput
                     var mp4Cmd = needsRecode
-                        ? "ffmpeg -y -i " + shellEscape(root.mp4Path) +
+                        ? "ffmpeg -y -i " + U.shellEscape(root.mp4Path) +
                           " -c:v copy -c:a aac -b:a 128k -movflags +faststart " +
-                          shellEscape(root.gifPath) + " 2>/dev/null && rm -f " + shellEscape(root.mp4Path) +
-                          " && ffmpeg -y -ss 0 -i " + shellEscape(root.gifPath) +
-                          " -frames:v 1 /tmp/screen-toolkit-record-thumb.png 2>/dev/null; exit 0"
-                        : "mv " + shellEscape(root.mp4Path) + " " + shellEscape(root.gifPath) +
-                          " && ffmpeg -y -ss 0 -i " + shellEscape(root.gifPath) +
-                          " -frames:v 1 /tmp/screen-toolkit-record-thumb.png 2>/dev/null; exit 0"
+                          U.shellEscape(root.gifPath) + " 2>/dev/null && rm -f " + U.shellEscape(root.mp4Path) +
+                          " && " + root._thumbCmd(root.gifPath) + "; exit 0"
+                        : "mv " + U.shellEscape(root.mp4Path) + " " + U.shellEscape(root.gifPath) +
+                          " && " + root._thumbCmd(root.gifPath) + "; exit 0"
                     gifConvertProc.exec({ command: ["bash", "-c", mp4Cmd] })
                 } else {
                     root.gifPath = optimOut + ".gif"
                     gifConvertProc.exec({ command: [
                         "bash", "-c",
-                        "ffmpeg -y -i " + shellEscape(root.mp4Path) +
+                        "ffmpeg -y -i " + U.shellEscape(root.mp4Path) +
                         " -vf 'fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,palettegen'" +
                         " /tmp/palette.png 2>/dev/null && " +
-                        "ffmpeg -y -i " + shellEscape(root.mp4Path) + " -i /tmp/palette.png " +
+                        "ffmpeg -y -i " + U.shellEscape(root.mp4Path) + " -i /tmp/palette.png " +
                         "-lavfi 'fps=15,scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos[x];[x][1:v]paletteuse' " +
-                        shellEscape(root.gifPath) + " 2>/dev/null && " +
-                        "rm -f /tmp/palette.png " + shellEscape(root.mp4Path)
+                        U.shellEscape(root.gifPath) + " 2>/dev/null && " +
+                        "rm -f /tmp/palette.png " + U.shellEscape(root.mp4Path) + " && " +
+                        root._thumbCmd(root.gifPath) + "; exit 0"
                     ]})
                 }
             } else {
@@ -270,14 +248,17 @@ Item {
             WlrLayershell.namespace: "noctalia-record"
             Item {
                 id: stopBtnAnchor
-                visible: isPrimary && !_isFullscreen
                 readonly property real btnW: 110
                 readonly property real btnH: 36
                 readonly property real spaceBelow: parent.height - (root.uiY + root.regionH)
+                readonly property real spaceAbove: root.uiY
+                readonly property bool hasRoomBelow: spaceBelow >= btnH + 10
+                readonly property bool hasRoomAbove: spaceAbove >= btnH + 10
+                visible: isPrimary && !_isFullscreen && (hasRoomBelow || hasRoomAbove)
                 x: Math.max(8, Math.min(root.uiX + (root.regionW - btnW) / 2, parent.width - btnW - 8))
-                y: spaceBelow >= btnH + 10
-                    ? root.uiY + root.regionH + 8
-                    : Math.max(8, root.uiY - btnH - 8)
+                y: hasRoomBelow
+                    ? root.uiY + root.regionH + 8       // preferred: below
+                    : root.uiY - btnH - 8               // fallback: above
                 width: btnW; height: btnH
                 Rectangle {
                     anchors.fill: parent
@@ -307,11 +288,48 @@ Item {
                 }
             }
             Item {
-                id: maskItem
-                x: stopBtnAnchor.x; y: stopBtnAnchor.y
-                width: stopBtnAnchor.btnW; height: stopBtnAnchor.btnH
+                id: compactBtn
+                readonly property real btnC: 36
+                readonly property bool hasRoomLeft:  root.uiX >= btnC + 10
+                readonly property bool hasRoomRight: (parent.width - root.uiX - root.regionW) >= btnC + 10
+                visible: isPrimary && !_isFullscreen
+                         && !stopBtnAnchor.hasRoomBelow && !stopBtnAnchor.hasRoomAbove
+                         && (hasRoomLeft || hasRoomRight)
+                width: btnC; height: btnC
+                y: Math.max(8, Math.min(
+                    root.uiY + (root.regionH - btnC) / 2,
+                    parent.height - btnC - 8))
+                x: hasRoomLeft
+                    ? root.uiX - btnC - 8               // left of region
+                    : root.uiX + root.regionW + 8       // right of region
+                Rectangle {
+                    anchors.fill: parent
+                    radius: Style.radiusL
+                    color: stopCMA.containsMouse ? Color.mError || "#f44336" : Color.mSurface
+                    border.color: Color.mError || "#f44336"
+                    border.width: Style.borderM
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 12; height: 12; radius: Style.radiusXXXS
+                        color: stopCMA.containsMouse ? "white" : Color.mError || "#f44336"
+                    }
+                    MouseArea {
+                        id: stopCMA; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.stopRecording()
+                    }
+                }
             }
-            mask: Region { item: (isPrimary && !_isFullscreen) ? maskItem : null }
+            Item {
+                id: maskItem
+                x:      stopBtnAnchor.visible ? stopBtnAnchor.x : compactBtn.x
+                y:      stopBtnAnchor.visible ? stopBtnAnchor.y : compactBtn.y
+                width:  stopBtnAnchor.visible ? stopBtnAnchor.width  : compactBtn.width
+                height: stopBtnAnchor.visible ? stopBtnAnchor.height : compactBtn.height
+            }
+            mask: Region {
+                item: (isPrimary && (stopBtnAnchor.visible || compactBtn.visible)) ? maskItem : null
+            }
             Rectangle {
                 visible: isPrimary && !_isFullscreen
                 x: root.uiX - 4; y: root.uiY - 4
@@ -326,7 +344,6 @@ Item {
                 visible: isPrimary && !_isFullscreen
                 readonly property real badgeH: 22
                 readonly property real spaceAbove: root.uiY - badgeH - 8
-                readonly property real spaceBelow: parent.height - (root.uiY + root.regionH)
                 x: Math.max(8, Math.min(root.uiX + 4, parent.width - recBadge.implicitWidth - 20))
                 y: spaceAbove >= 8
                     ? root.uiY - badgeH - 6
@@ -347,7 +364,7 @@ Item {
                         }
                     }
                     NText {
-                        text: "REC " + root.formatTime(root._elapsed)
+                        text: root.pluginApi?.tr("record.recLabel") + " " + root.formatTime(root._elapsed)
                         color: "white"; font.weight: Font.Bold; pointSize: Style.fontSizeXS
                         anchors.verticalCenter: parent.verticalCenter
                     }

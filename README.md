@@ -6,49 +6,59 @@ A unified collection of screen utilities for the **Noctalia Shell**, designed to
 
 ## Overview
 
-![Preview](preview.png)
-
 Screen Toolkit provides a single integrated panel for advanced screen interaction tools, including capture, annotation, OCR, recording, and color analysis.
 
 ---
 
 ## Included Tools
 
+| Tool                   | Description                                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| **Color Picker**       | Inspect any pixel and retrieve HEX, RGB, HSV, and HSL values instantly.             |
+| **Annotate**           | Draw on screenshots using pens, highlights, arrows, shapes, text, and blur effects. |
+| **Measure**            | Measure precise pixel distances using on-screen line tools.                         |
+| **Pin**                | Pin screenshots or local media as floating overlays on the screen.                  |
+| **Palette Extraction** | Extract dominant color palettes from selected regions.                              |
+| **OCR**                | Extract text from images with multilingual support and translation.                 |
+| **QR Scanner**         | Detect and decode QR codes and barcodes from screen regions.                        |
+| **Google Lens**        | Send a selected region to Google Lens for reverse image search.                     |
+| **Screen Recorder**    | Record fullscreen or selected regions as MP4 or GIF (with optional audio).          |
+| **Webcam Mirror**      | Floating webcam preview with resizing, flipping, and capture support.               |
 
-**Color Picker**
-Inspect any pixel and retrieve HEX, RGB, HSV, and HSL values instantly.
-![Color Picker](color.png)
+### Color Picker + Annotation
+You can use the color picker tool to select any color, and it will be automatically applied to annotations.
 
-**Annotate**
-Draw on screenshots using pens, highlights, arrows, shapes, text, and blur effects.
-![Annotate](annotate.png)
+### Annotation – Sharing
 
-**Measure**
-Measure precise pixel distances using on-screen line tools.
-![Measure](measure.png)
+You can quickly upload screenshots and get a shareable link.
 
-**Pin**
-Pin screenshots or local media as floating overlays on the screen.
-![Pin](pin.png)
-**Palette Extraction**
-Extract dominant color palettes from selected regions.
-![Palette](palette.png)
-**OCR**
-Extract text from images with multilingual support and translation.
-![OCR](ocr.png)
+- **Default (no setup):** uses https://uguu.se/ — links expire after ~3 hours
+- **Want more control:** get a free API key from https://up.x02.me/ to increase upload limits and choose expiry from settings: `1h | 1d | 7d | 30d | permanent` (default: 7d).
 
-**QR Scanner**
-Detect and decode QR codes and barcodes from screen regions.
-![QR Scanner](qr.png)
+### Recording UI behavior
+When recording is active, the plugin icon shows a red pulsing dot. Clicking the icon stops the recording.
 
-**Google Lens** 
-Send a selected region to Google Lens for reverse image search.
-                   
-**Screen Recorder** 
-Record fullscreen or selected regions as MP4 or GIF (with optional audio). 
-![Screen Recorder](Record.png)
-**Webcam Mirror**
-Floating webcam preview with resizing, flipping, and capture support.
+### Webcam Mirror Features
+
+- Take screenshots from mirror view
+- Automatically pin screenshots on screen (pin/unpin button)
+- Record video from mirror overlay
+- Optional microphone audio recording (on/off)
+
+---
+## 📸 Preview
+
+<p align="center">
+  <img src="assets/color.png" width="30%"/>
+  <img src="assets/annotate.png" width="30%"/>
+  <img src="assets/measure.png" width="30%"/>
+</p>
+
+<p align="center">
+  <img src="assets/pin.png" width="30%"/>
+  <img src="assets/palette.png" width="30%"/>
+  <img src="assets/ocr.png" width="30%"/>
+</p>
 
 ---
 
@@ -73,7 +83,7 @@ Floating webcam preview with resizing, flipping, and capture support.
 
 * `translate-shell` — OCR translation
 * `gifski` — high-quality GIF encoding
-* `zenity` / `kdialog` — fallback Pin Image/Video
+* `zenity` / `kdialog` — fallback for Pin Image/Video
 
 ---
 
@@ -118,12 +128,61 @@ Optional languages for OCR:
 
 ---
 
+## Structure:
+
+```
+Screen-Toolkit/
+├── i18n/
+│   ├── en.json
+│   ├── fr.json
+│   └── tr.json
+│
+├── scripts/
+│   ├── annotate.sh
+│   ├── color-picker.sh
+│   ├── lens-upload.sh
+│   ├── ocr.sh
+│   ├── pick-file.sh
+│   └── pick-file.py
+│   └── share-upload.sh
+├── overlays/
+│   ├── Annotate.qml
+│   ├── Mirror.qml
+│   ├── Record.qml
+│   ├── Measure.qml
+│   ├── Pin.qml
+│   └── RegionSelector.qml
+│
+├── widgets/
+│   ├── ResultColor.qml
+│   ├── ResultOcr.qml
+│   ├── ResultPalette.qml
+│   └── ResultQr.qml
+│
+├── shaders/
+│   ├── dimming.frag
+│   └── dimming.frag.qsb
+│
+├── utils/
+│   └── utils.js
+│
+├── Main.qml
+├── BarWidget.qml
+├── ControlCenterWidget.qml
+├── Panel.qml
+├── Settings.qml
+├── manifest.json
+└── README.md
+```
+
+---
+
 ## Compatibility
 
 | Compositor                    | Status          | Notes                         |
 | ----------------------------- | --------------- | ----------------------------- |
 | **Hyprland**                  | Fully supported | All features enabled          |
-| **Niri**                      | Fully supported | Window annotation is disabled |
+| **Niri**                      | Fully supported | Active window annotation is disabled (Niri API limitation) |
 | **Other Wayland compositors** | Partial support | Feature availability may vary |
 
 ---
@@ -173,6 +232,7 @@ Replace `<command>` with any of the following:
 | `annotateFullscreen` | Annotate full screen                   |
 | `annotateWindow`     | Annotate active window (Hyprland only) |
 
+
 ---
 
 ### Pin
@@ -194,13 +254,22 @@ Replace `<command>` with any of the following:
 | `recordFullscreenMp4` | Record fullscreen as MP4 |
 | `recordStop`          | Stop recording           |
 
+
+
+---
+
+### Mirror
+
+| Command  | Description                          |
+| -------- | ------------------------------------ |
+| `mirror` | Open webcam mirror (supports capture) |
+
 ---
 
 ### Utilities
 
 | Command       | Description                  |
 | ------------- | ---------------------------- |
-| `mirror`      | Toggle webcam mirror overlay |
 | `colorPicker` | Pick pixel color             |
 | `ocr`         | Extract text via OCR         |
 | `qr`          | Scan QR/barcodes             |
@@ -267,5 +336,4 @@ MIT License
 Contributions, issues, and feature requests are welcome.
 
 Repository: [https://github.com/noctalia-dev/noctalia-plugins](https://github.com/noctalia-dev/noctalia-plugins)
-
 

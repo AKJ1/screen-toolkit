@@ -5,7 +5,6 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Widgets
 import qs.Services.UI
-
 Item {
     id: root
     signal regionSelected(real x, real y, real w, real h, var screen)
@@ -16,8 +15,7 @@ Item {
     property var pluginApi: null
     property bool windowRegionsFetched: false
     property bool isNiri: false
-    
-
+    property bool _isNiriChecked: false
     function show(screen) {
         var target = screen || null
         if (!target && Quickshell.screens.length > 0)
@@ -26,11 +24,14 @@ Item {
         root.windowRegions = []
         root.windowRegionsFetched = false
         root.isVisible = true
-        _envCheckProc.exec({
-            command: ["bash", "-c",
-                "[ -n \"$NIRI_SOCKET\" ] && echo 1 || echo 0"
-            ]
-        })
+        if (!root._isNiriChecked) {
+            root._isNiriChecked = true
+            _envCheckProc.exec({
+                command: ["bash", "-c",
+                    "[ -n \"$NIRI_SOCKET\" ] && echo 1 || echo 0"
+                ]
+            })
+        }
         _winFetchProc.exec({
             command: ["bash", "-c",
                 "if [ -n \"$HYPRLAND_INSTANCE_SIGNATURE\" ]; then" +
@@ -51,12 +52,10 @@ Item {
             ]
         })
     }
-
     function hide() {
         root.isVisible = false
         root.activeScreen = null
     }
-
     Process {
         id: _envCheckProc
         stdout: StdioCollector {}
@@ -64,7 +63,6 @@ Item {
             root.isNiri = _envCheckProc.stdout.text.trim() === "1"
         }
     }
-
     Process {
         id: _winFetchProc
         stdout: StdioCollector {}
@@ -90,7 +88,6 @@ Item {
             root.windowRegionsFetched = true
         }
     }
-
     Variants {
         model: Quickshell.screens
         delegate: PanelWindow {
@@ -113,6 +110,8 @@ Item {
             property point startPos
             property bool dragging: false
             property real fadeOpacity: 0.0
+            property real _lastPaintMouseX: -1
+            property real _lastPaintMouseY: -1
             NumberAnimation {
                 id: fadeIn
                 target: win
@@ -126,6 +125,7 @@ Item {
                     fadeOpacity = 0.0
                     dragging = false
                     selX = 0; selY = 0; selW = 0; selH = 0
+                    _lastPaintMouseX = -1; _lastPaintMouseY = -1
                     fadeIn.restart()
                 } else {
                     fadeIn.stop()
@@ -163,6 +163,7 @@ Item {
                 property vector2d screenSize: Qt.vector2d(win.width, win.height)
                 property real borderRadius: 8.0
                 property real outlineThickness: 1.5
+                property vector4d outlineColor: Qt.vector4d(1.0, 1.0, 1.0, 1.0)
                 fragmentShader: Qt.resolvedUrl("../shaders/dimming.frag.qsb")
             }
             Canvas {
@@ -172,6 +173,8 @@ Item {
                 opacity: win.fadeOpacity
                 onPaint: {
                     var ctx = getContext("2d")
+                    win._lastPaintMouseX = win.mouseX
+                    win._lastPaintMouseY = win.mouseY
                     ctx.clearRect(0, 0, width, height)
                     var hasSel = win.selW > 4 && win.selH > 4
                     var mx = win.mouseX, my = win.mouseY
@@ -328,7 +331,11 @@ Item {
                 }
                 onPositionChanged: (mouse) => {
                     win.mouseX = mouse.x; win.mouseY = mouse.y
-                    guides.requestPaint()
+                    var dx = mouse.x - win._lastPaintMouseX
+                    var dy = mouse.y - win._lastPaintMouseY
+                    if (win._lastPaintMouseX === -1 || Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                        guides.requestPaint()
+                    }
                     if (win.dragging) {
                         win.selX = Math.min(win.startPos.x, mouse.x)
                         win.selY = Math.min(win.startPos.y, mouse.y)
@@ -381,3 +388,4 @@ Item {
         }
     }
 }
+

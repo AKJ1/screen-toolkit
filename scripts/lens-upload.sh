@@ -24,3 +24,5 @@ else
     notify-send -u critical 'Screen Toolkit' 'Upload failed'
     exit 1
 fi
+
+
