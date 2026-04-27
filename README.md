@@ -47,19 +47,20 @@ When recording is active, the plugin icon shows a red pulsing dot. Clicking the 
 
 ---
 ## 📸 Preview
-
 <p align="center">
-  <img src="assets/color.png" width="30%"/>
-  <img src="assets/annotate.png" width="30%"/>
-  <img src="assets/measure.png" width="30%"/>
+  <img src="assets/color.png" width="45%" />
+  <img src="assets/annotate.png" width="45%" />
 </p>
 
 <p align="center">
-  <img src="assets/pin.png" width="30%"/>
-  <img src="assets/palette.png" width="30%"/>
-  <img src="assets/ocr.png" width="30%"/>
+  <img src="assets/measure.png" width="45%" />
+  <img src="assets/pin.png" width="45%" />
 </p>
 
+<p align="center">
+  <img src="assets/palette.png" width="45%" />
+  <img src="assets/ocr.png" width="45%" />
+</p>
 ---
 
 ## Requirements
