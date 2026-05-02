@@ -112,6 +112,7 @@ Variants {
         property string shareUrl:         ""
         property bool   showSharePopover: false
         property bool   uploadFailed:     false
+        readonly property string _annotateScript: Qt.resolvedUrl("../scripts/annotate.sh").toString().replace("file://", "")
         function _invalidateCache() {
             _cacheValid      = false
             _cacheRebuilding = false
@@ -429,6 +430,13 @@ Variants {
                 root.hide()
             }
         }
+        Shortcut {
+            sequence: "Ctrl+C"
+            onActivated: {
+                if (overlayWin.isSaving || !overlayWin.isPrimary) return
+                overlayWin.flattenAndCopy()
+            }
+        }
         Process {
             id: flattenForShareProc
             onExited: (code) => {
@@ -441,35 +449,52 @@ Variants {
             }
         }
         Process {
-            id: uploadProc
-            stdout: StdioCollector {}
-            onExited: (code) => {
-                overlayWin.isUploading = false
-                var url     = uploadProc.stdout.text.trim()
-                var skipPop = root.mainInstance?.pluginApi?.pluginSettings?.shareSkipPopover ?? false
-                if (code === 0 && url.startsWith("http")) {
-                    overlayWin.shareUrl     = url
-                    overlayWin.uploadFailed = false
-                    if (skipPop) {
-                        overlayWin.showSharePopover = false
-                        wlCopyUrlProc.exec({ command: ["bash", "-c",
-                        "printf '%s' " + U.shellEscape(url) + " | wl-copy"] })
-                        ToastService.showNotice(
-                            root.mainInstance?.pluginApi?.tr("annotate.shareUrl"),
-                            url, "link")
-                    }
-                    // if !skipPop the popover already visible shows success state
-                } else {
-                    overlayWin.uploadFailed = true
-                    overlayWin.shareUrl     = ""
-                    if (skipPop) {
-                        overlayWin.showSharePopover = false
-                        ToastService.showError(
-                            root.mainInstance?.pluginApi?.tr("annotate.shareFailed"))
-                    }
-                }
-            }
-        }
+			id: uploadProc
+			stdout: StdioCollector {}
+			onExited: (code) => {
+				overlayWin.isUploading = false
+				var skipPop = root.mainInstance?.pluginApi?.pluginSettings?.shareSkipPopover ?? false
+				if (code === 0) {
+					var url = uploadProc.stdout.text.trim()
+					if (url.startsWith("http")) {
+						overlayWin.shareUrl     = url
+						overlayWin.uploadFailed = false
+						if (skipPop) {
+							overlayWin.showSharePopover = false
+							wlCopyUrlProc.exec({ command: ["bash", "-c",
+								"printf '%s' " + U.shellEscape(url) + " | wl-copy"] })
+							ToastService.showNotice(
+								root.mainInstance?.pluginApi?.tr("annotate.shareUrl"),
+								url, "link")
+						}
+						return
+					}
+					// code 0 but no valid URL — treat as code 5
+					code = 5
+				}
+				// failure path
+				overlayWin.uploadFailed = true
+				overlayWin.shareUrl     = ""
+				const keyMap = {
+					1: "share-bad-args",
+					2: "share-file-not-found",
+					3: "share-missing-dep",
+					4: "share-request-failed",
+					5: "share-invalid-response",
+					6: "share-file-too-large"
+				}
+				var msgKey = "messages." + (keyMap[code] ?? "share-unknown-error")
+				var msg    = root.mainInstance?.pluginApi?.tr(msgKey)
+				if (skipPop) {
+					overlayWin.showSharePopover = false
+					ToastService.showError(msg)
+				} else {
+					// popover is open — it already shows uploadFailed state,
+					// but also fire a toast so the user knows why
+					ToastService.showError(msg)
+				}
+			}
+		}
         Process { id: wlCopyUrlProc }
         Connections {
             target: root
@@ -537,29 +562,31 @@ Variants {
             }
         }
         Rectangle {
-            id: sharePopover
-            visible:      overlayWin.isPrimary && overlayWin.showSharePopover
-            z:            20
-            radius:       Style.radiusL
-            color:        Color.mSurface
-            border.color: Style.capsuleBorderColor
-            border.width: Style.capsuleBorderWidth
-            height: 44
-            width:  overlayWin.isUploading  ? (_spLoadRow.implicitWidth  + Style.marginM * 2)
-                  : overlayWin.uploadFailed ? (_spErrRow.implicitWidth   + Style.marginM * 2)
-                  :                           (_spSuccRow.implicitWidth   + Style.marginM * 2)
-            x: Math.max(Style.marginS, Math.min(
-                   toolbar.x + (toolbar.width - width) / 2,
-                   overlayWin.width - width - Style.marginS))
-            y: toolbar.useVertical
-               ? Math.max(Style.marginS, Math.min(
-                     toolbar.y + (toolbar.height - height) / 2,
-                     overlayWin.height - height - Style.marginS))
-               : (toolbar.spaceAbove >= height + Style.marginS
-                  ? toolbar.y - height - Style.marginXS
-                  : toolbar.y + toolbar.height + Style.marginXS)
-
-            // ── Uploading ──────────────────────────────────────────────────
+			id: sharePopover
+			visible: overlayWin.isPrimary && overlayWin.showSharePopover
+			z: 20
+			radius: Style.radiusL
+			color: Color.mSurface
+			border.color: Style.capsuleBorderColor
+			border.width: Style.capsuleBorderWidth
+			height: 44
+			width: overlayWin.isUploading
+				? (_spLoadRow.implicitWidth + Style.marginM * 2)
+				: overlayWin.uploadFailed
+					? (_spErrRow.implicitWidth + Style.marginM * 2)
+					: (_spSuccRow.implicitWidth + Style.marginM * 2)
+			x: Math.max(Style.marginS, Math.min(
+				toolbar.x + (toolbar.width - width) / 2,
+				overlayWin.width - width - Style.marginS
+			))
+			y: toolbar.useVertical
+				? Math.max(Style.marginS, Math.min(
+					toolbar.y + (toolbar.height - height) / 2,
+					overlayWin.height - height - Style.marginS
+				))
+				: (toolbar.y >= height + Style.marginS
+					? toolbar.y - height - Style.marginXS
+					: toolbar.y + toolbar.height + Style.marginXS)
             Row {
                 id: _spLoadRow
                 anchors.centerIn: parent
@@ -576,8 +603,6 @@ Variants {
                     anchors.verticalCenter: parent.verticalCenter
                 }
             }
-
-            // ── Success ────────────────────────────────────────────────────
             Row {
                 id: _spSuccRow
                 anchors.centerIn: parent
@@ -620,15 +645,13 @@ Variants {
                     }
                 }
             }
-
-            // ── Error ──────────────────────────────────────────────────────
             Row {
                 id: _spErrRow
                 anchors.centerIn: parent
                 spacing: Style.marginS
                 visible: !overlayWin.isUploading && overlayWin.uploadFailed
                 NIcon {
-                    icon: "alert-circle"; color: Color.mError ?? "#f44336"
+                    icon: "alert-circle"; color: Color.mError
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 NText {
@@ -703,7 +726,6 @@ Variants {
             border.width: Style.borderM
             opacity:      0.8
         }
-        // Zoom badge — Color.mPrimary background guarantees contrast against any image content
         Rectangle {
             visible: overlayWin.isPrimary && root.zoomScale > 1.0
             x:      overlayWin.localX + root.regionW - width - Style.marginXS
@@ -718,7 +740,7 @@ Variants {
                 spacing: Style.marginXS
                 NIcon { icon: "zoom-in"; color: Color.mOnPrimary }
                 NText {
-                    text:      Math.round(root.zoomScale) + root.mainInstance?.pluginApi?.tr("annotate.zoomViewOnly")
+                    text:      root.mainInstance?.pluginApi?.tr("annotate.zoomViewOnly", { scale: Math.round(root.zoomScale) })
                     color:     Color.mOnPrimary
                     pointSize: Style.fontSizeXS
                 }
@@ -1079,11 +1101,12 @@ Variants {
                     onExited:  TooltipService.hide()
                 }
             }
-            component ZoomBtn: Rectangle {
+                        component ZoomBtn: Rectangle {
                 property string iconName:   ""
                 property string tip:        ""
                 property bool   btnEnabled: true
-                width:   28; height: 34
+                width:   28
+                height:  34
                 radius:  Style.radiusS
                 color:   zbHover.containsMouse ? Color.mHover : "transparent"
                 enabled: btnEnabled
@@ -1095,13 +1118,13 @@ Variants {
                     color: zbHover.containsMouse ? Color.mOnHover : Color.mOnSurface
                 }
                 MouseArea {
-                    id: zbHover
+                    id:           zbHover
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape:  Qt.PointingHandCursor
-                    onClicked:  parent.clicked()
-                    onEntered:  TooltipService.show(parent, tip)
-                    onExited:   TooltipService.hide()
+                    onClicked:    parent.clicked()
+                    onEntered:    TooltipService.show(parent, tip)
+                    onExited:     TooltipService.hide()
                 }
             }
             component ActionBtn: Rectangle {
@@ -1109,29 +1132,32 @@ Variants {
                 property string tip:      ""
                 property bool   danger:   false
                 property bool   disabled: false
-                width:  34; height: 34
-                radius: Style.radiusS
+                width:   34
+                height:  34
+                radius:  Style.radiusS
                 opacity: disabled ? 0.3 : 1.0
-                color:  (!disabled && abHover.containsMouse)
-                    ? (danger ? Color.mErrorContainer || "#ffcdd2" : Color.mHover)
-                    : "transparent"
+                color:   (!disabled && abHover.containsMouse)
+                         ? (danger ? Qt.alpha(Color.mError, 0.15) : Color.mHover)
+                         : "transparent"
+                signal clicked()
                 NIcon {
                     anchors.centerIn: parent
                     icon:  iconName
-                    color: (!parent.disabled && abHover.containsMouse) && parent.danger ? Color.mError || "#f44336"
-                         : (!parent.disabled && abHover.containsMouse)                  ? Color.mOnHover
-                         : Color.mOnSurface
+                    color: (!parent.disabled && abHover.containsMouse) && parent.danger
+                           ? Color.mError
+                           : (!parent.disabled && abHover.containsMouse)
+                             ? Color.mOnHover
+                             : Color.mOnSurface
                 }
-                signal clicked()
                 MouseArea {
-                    id: abHover
+                    id:           abHover
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape:  parent.disabled ? Qt.ArrowCursor : Qt.PointingHandCursor
                     enabled:      !parent.disabled
-                    onClicked:  parent.clicked()
-                    onEntered:  TooltipService.show(parent, tip)
-                    onExited:   TooltipService.hide()
+                    onClicked:    parent.clicked()
+                    onEntered:    TooltipService.show(parent, tip)
+                    onExited:     TooltipService.hide()
                 }
             }
             component SaveBtn: Rectangle {
@@ -1309,11 +1335,11 @@ Variants {
                         btnEnabled: root.zoomScale > 1.0
                         onClicked:  overlayWin.requestZoom(Math.max(1.0, root.zoomScale - 1.0))
                     }
-                    Text {
+                    NText {
                         anchors.verticalCenter: parent.verticalCenter
                         text:                   root.zoomScale === 1.0 ? "1×" : Math.round(root.zoomScale) + "×"
                         color:                  root.zoomScale > 1.0 ? Color.mPrimary : Color.mOnSurfaceVariant
-                        font.pixelSize:         11
+                        pointSize:              Style.fontSizeXS
                         font.bold:              root.zoomScale > 1.0
                         width:                  22
                         horizontalAlignment:    Text.AlignHCenter
@@ -1414,12 +1440,12 @@ Variants {
                         btnEnabled: root.zoomScale > 1.0
                         onClicked:  overlayWin.requestZoom(Math.max(1.0, root.zoomScale - 1.0))
                     }
-                    Text {
+                    NText {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text:           root.zoomScale === 1.0 ? "1×" : Math.round(root.zoomScale) + "×"
-                        color:          root.zoomScale > 1.0 ? Color.mPrimary : Color.mOnSurfaceVariant
-                        font.pixelSize: 10
-                        font.bold:      root.zoomScale > 1.0
+                        text:      root.zoomScale === 1.0 ? "1×" : Math.round(root.zoomScale) + "×"
+                        color:     root.zoomScale > 1.0 ? Color.mPrimary : Color.mOnSurfaceVariant
+                        pointSize: Style.fontSizeXS
+                        font.bold: root.zoomScale > 1.0
                     }
                     ZoomBtn {
                         iconName:   "zoom-in"
@@ -1496,21 +1522,35 @@ Variants {
             }
         }
         Rectangle {
-            id: popover
-            visible: overlayWin.isPrimary && overlayWin.showPopover
-            radius: Style.radiusL; color: Color.mSurface
-            border.color: Style.capsuleBorderColor; border.width: Style.capsuleBorderWidth
-            width:  toolbar.useVertical ? (popContent.implicitWidth  + Style.marginS) : (popContent.implicitWidth  + Style.marginM)
-            height: toolbar.useVertical ? (popContent.implicitHeight + Style.marginM) : (popContent.implicitHeight + Style.marginS)
-            readonly property bool _canGoRight: toolbar.x + toolbar.width + width + Style.marginXS <= overlayWin.width
-            x: toolbar.useVertical
-               ? (_canGoRight
-                  ? toolbar.x + toolbar.width + Style.marginXS
-                  : Math.max(Style.marginS, toolbar.x - width - Style.marginXS))
-               : Math.max(Style.marginS, Math.min(toolbar.x + (toolbar.width - width) / 2, overlayWin.width - width - Style.marginS))
-            y: toolbar.useVertical
-               ? Math.max(Style.marginS, Math.min(toolbar.y + (toolbar.height - height) / 2, overlayWin.height - height - Style.marginS))
-               : (toolbar.spaceAbove >= height + Style.marginS ? toolbar.y - height - Style.marginXS : toolbar.y + toolbar.height + Style.marginXS)
+			id: popover
+			visible: overlayWin.isPrimary && overlayWin.showPopover
+			radius: Style.radiusL
+			color: Color.mSurface
+			border.color: Style.capsuleBorderColor
+			border.width: Style.capsuleBorderWidth
+			width: toolbar.useVertical
+				? (popContent.implicitWidth + Style.marginS)
+				: (popContent.implicitWidth + Style.marginM)
+			height: toolbar.useVertical
+				? (popContent.implicitHeight + Style.marginM)
+				: (popContent.implicitHeight + Style.marginS)
+			readonly property bool _canGoRight: toolbar.x + toolbar.width + width + Style.marginXS <= overlayWin.width
+			x: toolbar.useVertical
+				? (_canGoRight
+					? toolbar.x + toolbar.width + Style.marginXS
+					: Math.max(Style.marginS, toolbar.x - width - Style.marginXS))
+				: Math.max(Style.marginS, Math.min(
+					toolbar.x + (toolbar.width - width) / 2,
+					overlayWin.width - width - Style.marginS
+				))
+			y: toolbar.useVertical
+				? Math.max(Style.marginS, Math.min(
+					toolbar.y + (toolbar.height - height) / 2,
+					overlayWin.height - height - Style.marginS
+				))
+				: (toolbar.y >= height + Style.marginS
+					? toolbar.y - height - Style.marginXS
+					: toolbar.y + toolbar.height + Style.marginXS)
             Loader {
                 id: popContent
                 anchors.centerIn: parent
@@ -1628,10 +1668,10 @@ Variants {
                         overlayWin.uploadFailed = true
                         return
                     }
-                    flattenForShareProc.exec({ command: ["bash", "-c",
-                        "magick /tmp/screen-toolkit-annotate.png /tmp/screen-toolkit-overlay.png"
-                            + " -composite /tmp/screen-toolkit-share.png"
-                            + " && rm -f /tmp/screen-toolkit-overlay.png"
+                    flattenForShareProc.exec({ command: [
+                        "bash", overlayWin._annotateScript, "share-flatten",
+                        "/tmp/screen-toolkit-annotate.png",
+                        "/tmp/screen-toolkit-overlay.png"
                     ]})
                 })
             }
@@ -1645,20 +1685,16 @@ Variants {
             var custom   = root._annotateOutputDir()
             if (root.zoomScale > 1.0) {
                 if (custom === "__auto__") {
-                    var ssDir  = home + "/Pictures/Screenshots"
-                    var picDir = home + "/Pictures"
-                    saveFileProc.exec({ command: ["bash", "-c",
-                        "if [ -d " + U.shellEscape(ssDir) + " ]; then DEST=" + U.shellEscape(ssDir)
-                            + "; elif [ -d " + U.shellEscape(picDir) + " ]; then DEST=" + U.shellEscape(picDir)
-                            + "; else exit 1; fi;"
-                            + " cp " + U.shellEscape(root.imagePath) + " \"$DEST/" + filename + "\""
-                            + " && echo \"$DEST/" + filename + "\""
+                    saveFileProc.exec({ command: [
+                        "bash", overlayWin._annotateScript, "save-auto",
+                        root.imagePath, filename,
+                        home + "/Pictures/Screenshots",
+                        home + "/Pictures"
                     ]})
                 } else {
-                    var dest = custom + "/" + filename
-                    saveFileProc.exec({ command: ["bash", "-c",
-                        "cp " + U.shellEscape(root.imagePath) + " " + U.shellEscape(dest)
-                            + " && echo " + U.shellEscape(dest)
+                    saveFileProc.exec({ command: [
+                        "bash", overlayWin._annotateScript, "save",
+                        root.imagePath, custom + "/" + filename
                     ]})
                 }
             } else {
@@ -1669,24 +1705,20 @@ Variants {
                         return
                     }
                     if (custom === "__auto__") {
-                        var ssDir2  = home + "/Pictures/Screenshots"
-                        var picDir2 = home + "/Pictures"
-                        saveFileProc.exec({ command: ["bash", "-c",
-                            "if [ -d " + U.shellEscape(ssDir2) + " ]; then DEST=" + U.shellEscape(ssDir2)
-                                + "; elif [ -d " + U.shellEscape(picDir2) + " ]; then DEST=" + U.shellEscape(picDir2)
-                                + "; else exit 1; fi;"
-                                + " magick /tmp/screen-toolkit-annotate.png /tmp/screen-toolkit-overlay.png"
-                                + " -composite \"$DEST/" + filename + "\""
-                                + " && rm -f /tmp/screen-toolkit-overlay.png"
-                                + " && echo \"$DEST/" + filename + "\""
+                        saveFileProc.exec({ command: [
+                            "bash", overlayWin._annotateScript, "save-overlay-auto",
+                            "/tmp/screen-toolkit-annotate.png",
+                            "/tmp/screen-toolkit-overlay.png",
+                            filename,
+                            home + "/Pictures/Screenshots",
+                            home + "/Pictures"
                         ]})
                     } else {
-                        var dest2 = custom + "/" + filename
-                        saveFileProc.exec({ command: ["bash", "-c",
-                            "magick /tmp/screen-toolkit-annotate.png /tmp/screen-toolkit-overlay.png"
-                                + " -composite " + U.shellEscape(dest2)
-                                + " && rm -f /tmp/screen-toolkit-overlay.png"
-                                + " && echo " + U.shellEscape(dest2)
+                        saveFileProc.exec({ command: [
+                            "bash", overlayWin._annotateScript, "save-overlay",
+                            "/tmp/screen-toolkit-annotate.png",
+                            "/tmp/screen-toolkit-overlay.png",
+                            custom + "/" + filename
                         ]})
                     }
                 })
@@ -1696,7 +1728,9 @@ Variants {
             if (overlayWin.isSaving) return
             overlayWin.isSaving = true
             if (root.zoomScale > 1.0) {
-                copyProc.exec({ command: ["bash", "-c", "wl-copy < " + U.shellEscape(root.imagePath)] })
+                copyProc.exec({ command: [
+                    "bash", overlayWin._annotateScript, "copy-zoom", root.imagePath
+                ]})
             } else {
                 drawCanvas.grabToImage(function(result) {
                     if (!result || !result.saveToFile("/tmp/screen-toolkit-overlay.png")) {
@@ -1704,14 +1738,16 @@ Variants {
                         ToastService.showError(root.mainInstance?.pluginApi?.tr("annotate.copyFailed"))
                         return
                     }
-                    clipFlattenProc.exec({ command: ["bash", "-c",
-                        "magick /tmp/screen-toolkit-annotate.png /tmp/screen-toolkit-overlay.png"
-                            + " -composite /tmp/screen-toolkit-annotated.png"
-                            + " && wl-copy < /tmp/screen-toolkit-annotated.png"
-                            + " && rm -f /tmp/screen-toolkit-overlay.png"
+                    clipFlattenProc.exec({ command: [
+                        "bash", overlayWin._annotateScript, "copy",
+                        "/tmp/screen-toolkit-annotate.png",
+                        "/tmp/screen-toolkit-overlay.png"
                     ]})
                 })
             }
         }
     }
 }
+
+
+

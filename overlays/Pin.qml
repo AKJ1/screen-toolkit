@@ -495,3 +495,4 @@ Item {
         } // PanelWindow
     } // Variants
 } // root
+

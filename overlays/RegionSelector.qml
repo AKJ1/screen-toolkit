@@ -347,7 +347,7 @@ Item {
                     if (mouse.button === Qt.RightButton) return
                     win.dragging = false
                     if (win.selW < 5 && win.selH < 5) {
-                        if (!root.isNiri) {
+                        if (!root.isNiri && root.windowRegionsFetched) {
                             var hi = win._winAt(mouse.x, mouse.y)
                             if (hi >= 0) {
                                 var region = root.windowRegions[hi]
