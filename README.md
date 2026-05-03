@@ -84,6 +84,12 @@ When recording is active, the plugin icon shows a red pulsing dot. Clicking the 
 * `python3` + PyGObject (system file picker support)
 * `xdg-desktop-portal` (File picker for Pin Image/Video)
 
+### Color Picker
+
+* `hyprpicker` — primary picker (Hyprland / Niri compatible)
+* Zoom lens, live preview, multiple formats
+* Fallback: `slurp` + `grim`
+
 ### Optional Features
 
 * `translate-shell` — OCR translation
@@ -97,21 +103,21 @@ When recording is active, the plugin icon shows a red pulsing dot. Clicking the 
 ### Arch Linux
 
 ```bash
-sudo pacman -S grim slurp wl-clipboard tesseract tesseract-data-eng imagemagick zbar curl translate-shell ffmpeg jq wl-screenrec python python-gobject xdg-desktop-portal
+sudo pacman -S grim slurp hyprpicker wl-clipboard tesseract tesseract-data-eng imagemagick zbar curl translate-shell ffmpeg jq wl-screenrec python python-gobject xdg-desktop-portal
 yay -S gifski
 ```
 
 ### Debian / Ubuntu
 
 ```bash
-sudo apt install grim slurp wl-clipboard tesseract-ocr tesseract-ocr-eng imagemagick zbar-tools curl translate-shell ffmpeg jq python3 python3-gi xdg-desktop-portal
+sudo apt install grim slurp hyprpicker wl-clipboard tesseract-ocr tesseract-ocr-eng imagemagick zbar-tools curl translate-shell ffmpeg jq python3 python3-gi xdg-desktop-portal
 cargo install gifski
 ```
 
 ### Fedora
 
 ```bash
-sudo dnf install grim slurp wl-clipboard tesseract tesseract-langpack-eng ImageMagick zbar curl translate-shell ffmpeg jq wl-screenrec python3 python3-gobject xdg-desktop-portal
+sudo dnf install grim slurp hyprpicker wl-clipboard tesseract tesseract-langpack-eng ImageMagick zbar curl translate-shell ffmpeg jq wl-screenrec python3 python3-gobject xdg-desktop-portal
 cargo install gifski
 ```
 
@@ -119,7 +125,7 @@ cargo install gifski
 
 ```nix
 environment.systemPackages = with pkgs; [
-  grim slurp wl-clipboard tesseract imagemagick zbar curl
+  grim slurp hyprpicker wl-clipboard tesseract imagemagick zbar curl
   translate-shell wl-screenrec ffmpeg gifski jq
   python3 python3Packages.pygobject xdg-desktop-portal
 ];
