@@ -213,6 +213,7 @@ All settings are configurable via the plugin settings panel.
 | Skip Recording Confirmation | Start recording immediately                     | `false`                          |
 | Copy Recording to Clipboard | Copy output after recording                     | `false`                          |
 | GIF Max Seconds            | Maximum GIF duration                            | `30`                             |
+| Search Engine URL | URL used when searching OCR text. Leave empty to use Google. Examples: `https://duckduckgo.com/?q=` or `https://search.brave.com/search?q=` | `Google (default)` |
 
 Files automatically receive appropriate extensions (`.png`, `.mp4`, `.gif`).
 
