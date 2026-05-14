@@ -157,7 +157,8 @@
     "share-request-failed":   "Upload request failed",
     "share-invalid-response": "Upload failed: unexpected server response",
     "share-file-too-large":   "File too large for anonymous upload (128 MB max). Add an X02 API key for larger files.",
-    "share-unknown-error":    "Upload failed with unknown error"
+    "share-unknown-error":    "Upload failed with unknown error",
+    "record.stopFailed": "Could not find recorder process to stop"
   },
   "settings": {
     "ocrLanguages": "OCR Languages",
@@ -299,6 +300,7 @@
     "remove": "Remove"
   }
 }
+
 
 
 

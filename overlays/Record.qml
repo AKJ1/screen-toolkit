@@ -163,7 +163,14 @@ Item {
             }
         }
     }
-    Process { id: stopProc }
+    Process {
+    id: stopProc
+    onExited: (code) => {
+        if (code === 5) {
+            ToastService.showError(root.pluginApi?.tr("record.stopFailed"))
+        }
+    }
+}
     Process { id: clipProc }
     Process {
         id: gifConvertProc
