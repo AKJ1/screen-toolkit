@@ -15,7 +15,7 @@ Item {
     signal failed()
 
     function run(grimGeometry) {
-        qrProc.exec({ command: [root.scriptsDir + "capture.sh", "qr", grimGeometry] })
+        qrProc.exec({ command: ["bash", root.scriptsDir + "capture.sh", "qr", grimGeometry] })
     }
 
     function clearResults() {

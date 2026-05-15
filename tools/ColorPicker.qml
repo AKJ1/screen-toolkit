@@ -21,8 +21,8 @@ Item {
 
     function run() {
         colorPickerProc.exec({ command: [
-            root.scriptsDir + "color-picker.sh",
-            "/tmp/screen-toolkit-colorpicker.png"
+        "bash", root.scriptsDir + "color-picker.sh",
+        "/tmp/screen-toolkit-colorpicker.png"
         ]})
     }
 

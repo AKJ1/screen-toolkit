@@ -19,7 +19,7 @@ Item {
             root.pluginApi.saveSettings()
         }
         root.paletteColors = []
-        paletteProc.exec({ command: [root.scriptsDir + "capture.sh", "palette", grimGeometry] })
+        paletteProc.exec({ command: ["bash", root.scriptsDir + "capture.sh", "palette", grimGeometry] })
     }
 
     function clearResults() {

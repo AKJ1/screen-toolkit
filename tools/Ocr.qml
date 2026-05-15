@@ -24,7 +24,7 @@ Item {
         var aspectRatio = grimW / Math.max(grimH, 1)
         var psm         = aspectRatio > 8 ? "7" : area < 60000 ? "6" : grimH < 40 ? "7" : "3"
         ocrProc.command = [
-            root.scriptsDir + "ocr.sh",
+            "bash", root.scriptsDir + "ocr.sh",
             String(grimX), String(grimY), String(grimW), String(grimH),
             langStr || "eng",
             upscale,
