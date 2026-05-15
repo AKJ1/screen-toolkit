@@ -13,7 +13,7 @@
 #   2 — input file not found
 #   3 — missing dependency (ffmpeg, ffprobe, pkill)
 #   4 — conversion or process command failed
-#   5 - record stop Failed
+#
 # Used by: Record.qml
 set -euo pipefail
 ACTION="${1:-}"
@@ -85,20 +85,13 @@ case "$ACTION" in
   stop)
     BIN="${2:-}"
     [ -n "$BIN" ] || { echo "ERROR: stop: missing <recorder-bin>" >&2; exit 1; }
-    PID_FILE="/tmp/screen-toolkit-record.pid"
     PID=""
-    if [ -f "$PID_FILE" ]; then
-        PID=$(tr -d '[:space:]' < "$PID_FILE" 2>/dev/null || true)
-        rm -f "$PID_FILE"
-    fi
-    if [ -z "$PID" ]; then
-        for f in /proc/*/comm; do
-            if [ "$(cat "$f" 2>/dev/null)" = "$BIN" ]; then
-                PID=$(echo "${f%/comm}" | grep -o '[0-9]*' || true)
-                [ -n "$PID" ] && break
-            fi
-        done
-    fi
+    for f in /proc/*/comm; do
+        if [ "$(cat "$f" 2>/dev/null)" = "$BIN" ]; then
+            PID=$(echo "${f%/comm}" | grep -o '[0-9]*' || true)
+            [ -n "$PID" ] && break
+        fi
+    done
     if [ -z "$PID" ]; then
         for f in /proc/*/cmdline; do
             if tr '\0' ' ' < "$f" 2>/dev/null | grep -qF "$BIN"; then
