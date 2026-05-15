@@ -455,7 +455,7 @@ function clearPaletteResult() {
         id: launchAnnotateActiveWindow
         interval: 360; repeat: false
         onTriggered: {
-            annotateWinProc.exec({ command: [root._scriptsDir + "capture.sh", "annotate-window"] })
+            annotateWinProc.exec({ command: ["bash", root._scriptsDir + "capture.sh", "annotate-window"] })
         }
     }
     Timer {
@@ -474,14 +474,14 @@ function clearPaletteResult() {
         id: launchPin
         interval: 50; repeat: false
         onTriggered: {
-            pinGrimProc.exec({ command: [root._scriptsDir + "capture.sh", "pin", root._grimGeometry] })
+            pinGrimProc.exec({ command: ["bash", root._scriptsDir + "capture.sh", "pin", root._grimGeometry] })
         }
     }
     Timer {
         id: launchPinFile
         interval: 200; repeat: false
         onTriggered: {
-            pinFileProc.exec({ command: [root._scriptsDir + "pick-file.sh"] })
+            pinFileProc.exec({ command: ["bash", root._scriptsDir + "pick-file.sh"] })
         }
     }
     Timer {
@@ -720,5 +720,6 @@ function clearPaletteResult() {
         function recordStop()          { if (recordOverlay.isRecording) recordOverlay.stopRecording() }
     }
 }
+
 
 
